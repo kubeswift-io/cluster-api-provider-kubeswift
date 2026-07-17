@@ -79,44 +79,55 @@ spec:
                   spec:
                     description: spec is the KubeSwiftMachineSpec to stamp out.
                     properties:
-                      guestClassRef:
+                      backend:
                         description: |-
-                          guestClassRef names the SwiftGuestClass that supplies the VM's CPU, memory,
-                          and disk sizing.
-                        type: string
-                      imageRef:
-                        description: imageRef names the SwiftImage the VM boots from
-                          (disk boot).
-                        type: string
-                      networkRef:
-                        description: |-
-                          networkRef optionally attaches the VM's primary interface to a named network
-                          (a NetworkAttachmentDefinition). Empty uses the default pod network.
-                        type: string
+                          backend selects and configures the KubeSwift resource that backs this machine.
+                          The config matching backend.type must be set. Today only "SwiftGuest" is a
+                          valid node backend; the discriminator exists so a future feasible substrate
+                          can be added without an API break.
+                        properties:
+                          swiftGuest:
+                            description: |-
+                              swiftGuest configures the SwiftGuest (full VM) backend. Required when
+                              type is "SwiftGuest".
+                            properties:
+                              guestClassRef:
+                                description: |-
+                                  guestClassRef names the cluster-scoped SwiftGuestClass that supplies the VM's
+                                  CPU, memory, and root-disk sizing (SwiftGuest carries no inline sizing).
+                                type: string
+                              imageRef:
+                                description: |-
+                                  imageRef names the SwiftImage the VM boots from (disk boot). It references a
+                                  SwiftImage by name in the guest namespace, which must be Ready before boot.
+                                type: string
+                              networkRef:
+                                description: |-
+                                  networkRef optionally attaches the VM's primary interface to a named network
+                                  (a NetworkAttachmentDefinition). Empty uses the default node-local network.
+                                type: string
+                            type: object
+                          type:
+                            default: SwiftGuest
+                            description: type is the backend kind. Only "SwiftGuest"
+                              is currently supported.
+                            enum:
+                            - SwiftGuest
+                            type: string
+                        required:
+                        - type
+                        type: object
                       providerID:
                         description: |-
                           providerID must match the provider ID on the Node backing this machine, in
                           the form "kubeswift://<guest-namespace>/<guest-name>". The controller sets it
-                          once the SwiftGuest VM is provisioned; the Cluster API Machine controller
+                          once the backing resource is provisioned; the Cluster API Machine controller
                           surfaces it on the Machine. Cluster API infrastructure-provider contract field.
                         maxLength: 512
                         minLength: 1
                         type: string
-                      resources:
-                        description: resources optionally overrides the CPU and memory
-                          from the guest class.
-                        properties:
-                          cpu:
-                            description: cpu is the number of vCPUs.
-                            format: int32
-                            minimum: 1
-                            type: integer
-                          memoryMiB:
-                            description: memoryMiB is the guest memory in MiB.
-                            format: int64
-                            minimum: 1
-                            type: integer
-                        type: object
+                    required:
+                    - backend
                     type: object
                 required:
                 - spec

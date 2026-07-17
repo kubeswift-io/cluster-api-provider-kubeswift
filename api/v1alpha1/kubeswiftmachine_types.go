@@ -5,47 +5,65 @@ import (
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 )
 
+// MachineBackendType selects the KubeSwift resource that backs a KubeSwiftMachine.
+// +kubebuilder:validation:Enum=SwiftGuest
+type MachineBackendType string
+
+const (
+	// SwiftGuestBackendType backs the machine with a full SwiftGuest VM (disk boot,
+	// cloud-init, routable IP, persistent disk) — the only KubeSwift substrate that
+	// can be a persistent Kubernetes node. See docs/spikes/01-sandbox-as-capi-node.md
+	// for why SwiftSandbox / SwiftSandboxPool are not valid node backends.
+	SwiftGuestBackendType MachineBackendType = "SwiftGuest"
+)
+
 // KubeSwiftMachineSpec defines the desired state of KubeSwiftMachine.
 type KubeSwiftMachineSpec struct {
 	// providerID must match the provider ID on the Node backing this machine, in
 	// the form "kubeswift://<guest-namespace>/<guest-name>". The controller sets it
-	// once the SwiftGuest VM is provisioned; the Cluster API Machine controller
+	// once the backing resource is provisioned; the Cluster API Machine controller
 	// surfaces it on the Machine. Cluster API infrastructure-provider contract field.
 	// +optional
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=512
 	ProviderID string `json:"providerID,omitempty"`
 
-	// imageRef names the SwiftImage the VM boots from (disk boot).
+	// backend selects and configures the KubeSwift resource that backs this machine.
+	// The config matching backend.type must be set. Today only "SwiftGuest" is a
+	// valid node backend; the discriminator exists so a future feasible substrate
+	// can be added without an API break.
+	Backend MachineBackend `json:"backend"`
+}
+
+// MachineBackend is a discriminated union selecting the KubeSwift resource that
+// backs a KubeSwiftMachine.
+type MachineBackend struct {
+	// type is the backend kind. Only "SwiftGuest" is currently supported.
+	// +kubebuilder:default=SwiftGuest
+	Type MachineBackendType `json:"type"`
+
+	// swiftGuest configures the SwiftGuest (full VM) backend. Required when
+	// type is "SwiftGuest".
+	// +optional
+	SwiftGuest *SwiftGuestBackend `json:"swiftGuest,omitempty"`
+}
+
+// SwiftGuestBackend configures a machine backed by a SwiftGuest VM.
+type SwiftGuestBackend struct {
+	// imageRef names the SwiftImage the VM boots from (disk boot). It references a
+	// SwiftImage by name in the guest namespace, which must be Ready before boot.
 	// +optional
 	ImageRef string `json:"imageRef,omitempty"`
 
-	// guestClassRef names the SwiftGuestClass that supplies the VM's CPU, memory,
-	// and disk sizing.
+	// guestClassRef names the cluster-scoped SwiftGuestClass that supplies the VM's
+	// CPU, memory, and root-disk sizing (SwiftGuest carries no inline sizing).
 	// +optional
 	GuestClassRef string `json:"guestClassRef,omitempty"`
 
-	// resources optionally overrides the CPU and memory from the guest class.
-	// +optional
-	Resources *MachineResources `json:"resources,omitempty"`
-
 	// networkRef optionally attaches the VM's primary interface to a named network
-	// (a NetworkAttachmentDefinition). Empty uses the default pod network.
+	// (a NetworkAttachmentDefinition). Empty uses the default node-local network.
 	// +optional
 	NetworkRef string `json:"networkRef,omitempty"`
-}
-
-// MachineResources overrides the guest-class sizing for a single machine.
-type MachineResources struct {
-	// cpu is the number of vCPUs.
-	// +optional
-	// +kubebuilder:validation:Minimum=1
-	CPU int32 `json:"cpu,omitempty"`
-
-	// memoryMiB is the guest memory in MiB.
-	// +optional
-	// +kubebuilder:validation:Minimum=1
-	MemoryMiB int64 `json:"memoryMiB,omitempty"`
 }
 
 // KubeSwiftMachineStatus defines the observed state of KubeSwiftMachine.
@@ -81,11 +99,12 @@ type KubeSwiftMachineStatus struct {
 // +kubebuilder:storageversion
 // +kubebuilder:resource:path=kubeswiftmachines,scope=Namespaced,categories=cluster-api
 // +kubebuilder:printcolumn:name="Provisioned",type=boolean,JSONPath=".status.initialization.provisioned",description="VM is provisioned and running"
-// +kubebuilder:printcolumn:name="ProviderID",type=string,JSONPath=".spec.providerID",description="SwiftGuest provider ID"
+// +kubebuilder:printcolumn:name="Backend",type=string,JSONPath=".spec.backend.type",description="Machine backend"
+// +kubebuilder:printcolumn:name="ProviderID",type=string,JSONPath=".spec.providerID",description="Provider ID"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 
 // KubeSwiftMachine is the Schema for the kubeswiftmachines API. It is the
-// infrastructure counterpart of a Cluster API Machine, backed by a SwiftGuest VM.
+// infrastructure counterpart of a Cluster API Machine, backed by a KubeSwift VM.
 type KubeSwiftMachine struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
