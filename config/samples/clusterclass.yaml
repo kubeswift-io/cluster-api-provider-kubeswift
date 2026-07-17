@@ -1,0 +1,134 @@
+# A ClusterClass backed by KubeSwift, plus a topology Cluster that uses it.
+#
+# ClusterClass is EXPERIMENTAL in Cluster API v1.13: enable the feature gate on the
+# management cluster (CLUSTER_TOPOLOGY=true, e.g. `clusterctl init` with the env var, or
+# the topology flag on the core manager). The KubeSwiftMachineTemplate immutability
+# webhook (this provider) tolerates the topology controller's SSA dry-run so template
+# diffing works.
+#
+# Same prerequisites as capi-quickstart.yaml: KubeSwift + this provider + cert-manager,
+# a cluster-scoped SwiftGuestClass, a Ready SwiftImage, and an operator-provided
+# control-plane endpoint (set on the Cluster topology variables or the InfraCluster).
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: KubeSwiftClusterTemplate
+metadata:
+  name: ks-classy
+  namespace: default
+spec:
+  template:
+    spec: {}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: KubeSwiftMachineTemplate
+metadata:
+  name: ks-classy-controlplane
+  namespace: default
+spec:
+  template:
+    spec:
+      backend:
+        type: SwiftGuest
+        swiftGuest:
+          imageRef: ubuntu-noble
+          guestClassRef: capi-controlplane
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: KubeSwiftMachineTemplate
+metadata:
+  name: ks-classy-worker
+  namespace: default
+spec:
+  template:
+    spec:
+      backend:
+        type: SwiftGuest
+        swiftGuest:
+          imageRef: ubuntu-noble
+          guestClassRef: capi-worker
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+kind: KubeadmControlPlaneTemplate
+metadata:
+  name: ks-classy-controlplane
+  namespace: default
+spec:
+  template:
+    spec:
+      kubeadmConfigSpec:
+        joinConfiguration:
+          nodeRegistration:
+            kubeletExtraArgs:
+              - name: cloud-provider
+                value: external
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfigTemplate
+metadata:
+  name: ks-classy-worker
+  namespace: default
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            - name: cloud-provider
+              value: external
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: ClusterClass
+metadata:
+  name: ks-classy
+  namespace: default
+spec:
+  controlPlane:
+    ref:
+      apiGroup: controlplane.cluster.x-k8s.io
+      kind: KubeadmControlPlaneTemplate
+      name: ks-classy-controlplane
+    machineInfrastructure:
+      ref:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: KubeSwiftMachineTemplate
+        name: ks-classy-controlplane
+  infrastructure:
+    ref:
+      apiGroup: infrastructure.cluster.x-k8s.io
+      kind: KubeSwiftClusterTemplate
+      name: ks-classy
+  workers:
+    machineDeployments:
+      - class: default-worker
+        template:
+          bootstrap:
+            ref:
+              apiGroup: bootstrap.cluster.x-k8s.io
+              kind: KubeadmConfigTemplate
+              name: ks-classy-worker
+          infrastructure:
+            ref:
+              apiGroup: infrastructure.cluster.x-k8s.io
+              kind: KubeSwiftMachineTemplate
+              name: ks-classy-worker
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  name: ks-classy-01
+  namespace: default
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks: ["192.168.0.0/16"]
+  topology:
+    classRef:
+      name: ks-classy
+    version: v1.34.0
+    controlPlane:
+      replicas: 1
+    workers:
+      machineDeployments:
+        - class: default-worker
+          name: md-0
+          replicas: 2

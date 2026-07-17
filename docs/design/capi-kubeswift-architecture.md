@@ -1,8 +1,13 @@
 # cluster-api-provider-kubeswift — Architecture
 
-> Status: design anchor for the initial provider. Written alongside the scaffold.
-> The CRDs exist and compile; the controllers described here are the implementation
-> plan, not yet built.
+> Status: design anchor for the initial provider. **P1 is implemented** and builds/
+> tests green against Cluster API v1.13.4 (v1beta2 contract): the KubeSwiftCluster and
+> KubeSwiftMachine reconcilers, the SwiftGuest backend, and the ClusterClass template
+> webhook. Reconcile flows below match the code. What remains cluster-gated is
+> end-to-end validation on a real Cluster API + KubeSwift management cluster (the
+> provider-id-into-node injection in particular). Some sections below written before
+> implementation may describe intent slightly ahead of code; the CHANGELOG is authoritative
+> for what shipped.
 
 ## 1. Purpose
 

@@ -1,0 +1,159 @@
+# A plain (non-ClusterClass) workload cluster backed by KubeSwift SwiftGuest VMs.
+#
+# Prerequisites on the MANAGEMENT cluster:
+#   - Cluster API v1.13+ (clusterctl init) + the Kubeadm bootstrap/control-plane providers.
+#   - cert-manager (for the provider webhook).
+#   - KubeSwift installed, and this provider deployed.
+#   - A cluster-scoped SwiftGuestClass and a Ready SwiftImage (see the bottom of this file).
+#   - An operator-provided control-plane endpoint (KubeSwift does not provision a load
+#     balancer). Set spec.controlPlaneEndpoint on the KubeSwiftCluster below.
+#
+# Replace ${...} placeholders and apply into a namespace where KubeSwift can create guests.
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  name: ks-quickstart
+  namespace: default
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks: ["192.168.0.0/16"]
+    services:
+      cidrBlocks: ["10.128.0.0/12"]
+  controlPlaneRef:
+    apiGroup: controlplane.cluster.x-k8s.io
+    kind: KubeadmControlPlane
+    name: ks-quickstart-cp
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: KubeSwiftCluster
+    name: ks-quickstart
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: KubeSwiftCluster
+metadata:
+  name: ks-quickstart
+  namespace: default
+spec:
+  # Operator-provided; KubeSwift provisions no load balancer. Point this at a
+  # control-plane VIP (e.g. kube-vip) or an external LB reachable from the mgmt cluster.
+  controlPlaneEndpoint:
+    host: ${CONTROL_PLANE_ENDPOINT_HOST}
+    port: 6443
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+kind: KubeadmControlPlane
+metadata:
+  name: ks-quickstart-cp
+  namespace: default
+spec:
+  replicas: 1
+  version: v1.34.0
+  machineTemplate:
+    infrastructureRef:
+      apiGroup: infrastructure.cluster.x-k8s.io
+      kind: KubeSwiftMachineTemplate
+      name: ks-quickstart-cp
+  kubeadmConfigSpec:
+    initConfiguration:
+      nodeRegistration:
+        # KubeSwift is agnostic to providerID; the provider injects the matching value
+        # via the bootstrap data, so no in-guest cloud-provider is required.
+        kubeletExtraArgs:
+          - name: cloud-provider
+            value: external
+    joinConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+          - name: cloud-provider
+            value: external
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: KubeSwiftMachineTemplate
+metadata:
+  name: ks-quickstart-cp
+  namespace: default
+spec:
+  template:
+    spec:
+      backend:
+        type: SwiftGuest
+        swiftGuest:
+          imageRef: ubuntu-noble
+          guestClassRef: capi-controlplane
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineDeployment
+metadata:
+  name: ks-quickstart-md
+  namespace: default
+spec:
+  clusterName: ks-quickstart
+  replicas: 2
+  selector:
+    matchLabels: {}
+  template:
+    spec:
+      clusterName: ks-quickstart
+      version: v1.34.0
+      bootstrap:
+        configRef:
+          apiGroup: bootstrap.cluster.x-k8s.io
+          kind: KubeadmConfigTemplate
+          name: ks-quickstart-md
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: KubeSwiftMachineTemplate
+        name: ks-quickstart-md
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: KubeSwiftMachineTemplate
+metadata:
+  name: ks-quickstart-md
+  namespace: default
+spec:
+  template:
+    spec:
+      backend:
+        type: SwiftGuest
+        swiftGuest:
+          imageRef: ubuntu-noble
+          guestClassRef: capi-worker
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfigTemplate
+metadata:
+  name: ks-quickstart-md
+  namespace: default
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            - name: cloud-provider
+              value: external
+---
+# Prerequisite KubeSwift resources (create once; not owned by Cluster API).
+# SwiftGuestClass is cluster-scoped and supplies CPU/memory/disk (SwiftGuest carries no
+# inline sizing). SwiftImage must reach status.phase: Ready before the VMs boot.
+#
+# apiVersion: swift.kubeswift.io/v1alpha1
+# kind: SwiftGuestClass
+# metadata: { name: capi-worker }
+# spec: { cpu: "2", memory: 4Gi, rootDisk: { size: 40Gi, format: qcow2 } }
+# ---
+# apiVersion: swift.kubeswift.io/v1alpha1
+# kind: SwiftGuestClass
+# metadata: { name: capi-controlplane }
+# spec: { cpu: "2", memory: 4Gi, rootDisk: { size: 40Gi, format: qcow2 } }
+# ---
+# apiVersion: image.kubeswift.io/v1alpha1
+# kind: SwiftImage
+# metadata: { name: ubuntu-noble, namespace: default }
+# spec:
+#   source: { http: { url: https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img } }
+#   format: qcow2
+#   osType: linux
+#   rootDisk: { size: 40Gi }

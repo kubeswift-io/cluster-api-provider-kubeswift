@@ -13,6 +13,16 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the Cluster API v1beta2 infrastructure-provider contract fields (control-plane
   endpoint, `providerID`, `status.initialization.provisioned`, addresses, conditions).
 - Architecture design doc (`docs/design/capi-kubeswift-architecture.md`).
+- **KubeSwiftCluster + KubeSwiftMachine reconcilers** (v1beta2 contract): the cluster
+  reports provisioned once a control-plane endpoint is set; the machine gates on
+  cluster-infrastructure-ready + the bootstrap secret, creates a SwiftGuest +
+  SwiftSeedProfile via the unstructured client (an internal `Backend` seam; SwiftGuest
+  today), injects the kubelet provider-id into the bootstrap cloud-init, and surfaces
+  `providerID` / `addresses` / `status.initialization.provisioned`.
+- **ClusterClass support**: a `KubeSwiftMachineTemplate` validating webhook enforcing
+  `spec.template.spec` immutability with a topology dry-run carve-out
+  (`topology.IsDryRunRequest`), plus sample manifests
+  (`config/samples/capi-quickstart.yaml`, `config/samples/clusterclass.yaml`).
 - Apache-2.0 license. Design and spike docs (`docs/design/`, `docs/spikes/`) are
   tracked in-repo; AI tooling (`.claude/`, `CLAUDE.md`, `.devcontainer/`) is
   gitignored and kept local (matching the KubeSwift core repo).
