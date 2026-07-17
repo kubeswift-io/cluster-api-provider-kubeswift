@@ -21,8 +21,11 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+
 	infrastructurev1alpha1 "github.com/kubeswift-io/cluster-api-provider-kubeswift/api/v1alpha1"
 	"github.com/kubeswift-io/cluster-api-provider-kubeswift/internal/controller"
+	webhookinfrastructurev1alpha1 "github.com/kubeswift-io/cluster-api-provider-kubeswift/internal/webhook/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -34,6 +37,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
+	utilruntime.Must(clusterv1.AddToScheme(scheme))
 	utilruntime.Must(infrastructurev1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
@@ -199,6 +203,13 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KubeSwiftMachine")
 		os.Exit(1)
+	}
+	// nolint:goconst
+	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		if err = webhookinfrastructurev1alpha1.SetupKubeSwiftMachineTemplateWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "KubeSwiftMachineTemplate")
+			os.Exit(1)
+		}
 	}
 	// +kubebuilder:scaffold:builder
 

@@ -2,6 +2,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 )
 
 // KubeSwiftMachineTemplateSpec defines the desired state of KubeSwiftMachineTemplate.
@@ -15,13 +16,14 @@ type KubeSwiftMachineTemplateSpec struct {
 type KubeSwiftMachineTemplateResource struct {
 	// metadata is the labels and annotations to stamp onto the created object.
 	// +optional
-	ObjectMeta ObjectMeta `json:"metadata,omitempty"`
+	ObjectMeta clusterv1.ObjectMeta `json:"metadata,omitempty"`
 
 	// spec is the KubeSwiftMachineSpec to stamp out.
 	Spec KubeSwiftMachineSpec `json:"spec"`
 }
 
 // +kubebuilder:object:root=true
+// +kubebuilder:storageversion
 // +kubebuilder:resource:path=kubeswiftmachinetemplates,scope=Namespaced,categories=cluster-api
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 

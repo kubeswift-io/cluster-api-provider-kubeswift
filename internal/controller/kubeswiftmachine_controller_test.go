@@ -35,7 +35,15 @@ var _ = Describe("KubeSwiftMachine Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: infrastructurev1alpha1.KubeSwiftMachineSpec{
+						Backend: infrastructurev1alpha1.MachineBackend{
+							Type: infrastructurev1alpha1.SwiftGuestBackendType,
+							SwiftGuest: &infrastructurev1alpha1.SwiftGuestBackend{
+								ImageRef:      "ubuntu-noble",
+								GuestClassRef: "capi-worker",
+							},
+						},
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}

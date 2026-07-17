@@ -1,8 +1,11 @@
 name: E2E Tests
 
+# Manual only. The scaffolded Kind-based e2e is a placeholder; meaningful e2e for
+# this provider needs a management cluster with Cluster API + KubeSwift installed
+# (see docs/design/capi-kubeswift-architecture.md), which a bare Kind runner cannot
+# provide. Run on demand until the real e2e harness lands.
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   test-e2e:

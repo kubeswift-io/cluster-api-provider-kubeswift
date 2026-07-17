@@ -8,6 +8,14 @@ resources:
 - bases/infrastructure.cluster.x-k8s.io_kubeswiftmachinetemplates.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
+# Cluster API contract label: maps the CAPI contract version this provider
+# implements (v1beta2) to the CRD version that satisfies it (v1alpha1). Core
+# Cluster API reads this label off the CRD to resolve InfraCluster/InfraMachine
+# object references. See docs/design/capi-kubeswift-architecture.md.
+labels:
+  - pairs:
+      cluster.x-k8s.io/v1beta2: v1alpha1
+
 patches:
 # [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix.
 # patches here are for enabling the conversion webhook for each CRD
