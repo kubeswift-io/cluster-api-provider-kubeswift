@@ -2,12 +2,12 @@
 # Cluster API contract it implements. clusterctl reads this to decide
 # compatibility with the installed Cluster API version.
 #
-# NOTE: the contract value below is provisional. It is confirmed against the
-# target Cluster API version when the controllers actually implement the
-# contract (see docs/design/capi-kubeswift-architecture.md, Phases).
+# Grounded 2026-07-17 against Cluster API v1.13.4: this provider targets the
+# v1beta2 infrastructure-provider contract (types under api/core/v1beta2).
+# The v1beta1 contract is deprecated (compatibility removed tentatively April 2027).
 apiVersion: clusterctl.cluster.x-k8s.io/v1alpha3
 kind: Metadata
 releaseSeries:
   - major: 0
     minor: 1
-    contract: v1beta1
+    contract: v1beta2

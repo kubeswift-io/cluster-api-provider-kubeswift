@@ -18,8 +18,8 @@ spec:
   versions:
   - additionalPrinterColumns:
     - description: VM is provisioned and running
-      jsonPath: .status.ready
-      name: Ready
+      jsonPath: .status.initialization.provisioned
+      name: Provisioned
       type: boolean
     - description: SwiftGuest provider ID
       jsonPath: .spec.providerID
@@ -55,11 +55,6 @@ spec:
           spec:
             description: KubeSwiftMachineSpec defines the desired state of KubeSwiftMachine.
             properties:
-              failureDomain:
-                description: |-
-                  failureDomain is the failure domain the VM is placed in. The controller
-                  copies it from the owning Cluster API Machine's spec.failureDomain.
-                type: string
               guestClassRef:
                 description: |-
                   guestClassRef names the SwiftGuestClass that supplies the VM's CPU, memory,
@@ -76,10 +71,12 @@ spec:
                 type: string
               providerID:
                 description: |-
-                  providerID identifies the SwiftGuest VM backing this machine, in the form
-                  "kubeswift://<guest-namespace>/<guest-name>". The controller sets it once the
-                  VM is provisioned; the Cluster API Machine controller copies it onto the
-                  Node. Required by the infrastructure-provider contract.
+                  providerID must match the provider ID on the Node backing this machine, in
+                  the form "kubeswift://<guest-namespace>/<guest-name>". The controller sets it
+                  once the SwiftGuest VM is provisioned; the Cluster API Machine controller
+                  surfaces it on the Machine. Cluster API infrastructure-provider contract field.
+                maxLength: 512
+                minLength: 1
                 type: string
               resources:
                 description: resources optionally overrides the CPU and memory from
@@ -101,18 +98,26 @@ spec:
             description: KubeSwiftMachineStatus defines the observed state of KubeSwiftMachine.
             properties:
               addresses:
-                description: addresses lists the addresses assigned to the VM.
+                description: addresses lists the addresses assigned to the VM, surfaced
+                  to the Machine.
                 items:
-                  description: MachineAddress is an address surfaced from the backing
-                    VM.
+                  description: MachineAddress contains information for the node's
+                    address.
                   properties:
                     address:
-                      description: address is the machine address value.
+                      description: address is the machine address.
+                      maxLength: 256
+                      minLength: 1
                       type: string
                     type:
-                      description: |-
-                        type is the machine address type: Hostname, InternalIP, ExternalIP,
-                        InternalDNS, or ExternalDNS.
+                      description: type is the machine address type, one of Hostname,
+                        ExternalIP, InternalIP, ExternalDNS or InternalDNS.
+                      enum:
+                      - Hostname
+                      - ExternalIP
+                      - InternalIP
+                      - ExternalDNS
+                      - InternalDNS
                       type: string
                   required:
                   - address
@@ -120,8 +125,11 @@ spec:
                   type: object
                 type: array
               conditions:
-                description: conditions represents the observations of the KubeSwiftMachine's
-                  state.
+                description: |-
+                  conditions represents the observations of the KubeSwiftMachine's state.
+                  A condition of type "Ready" is mirrored into the Machine's InfrastructureReady
+                  condition. Per the v1beta2 contract, terminal failures are surfaced via
+                  conditions (there is no failureReason/failureMessage).
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -180,20 +188,24 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              failureMessage:
-                description: failureMessage is a human-readable description of a terminal
-                  failure.
-                type: string
-              failureReason:
+              failureDomain:
                 description: |-
-                  failureReason is a terminal, programmatic failure cause. When set, the
-                  machine is not retried and requires manual intervention.
+                  failureDomain is the failure domain the VM was actually placed in, surfaced
+                  to the Machine.
+                maxLength: 256
+                minLength: 1
                 type: string
-              ready:
+              initialization:
                 description: |-
-                  ready denotes that the VM is provisioned and running. Required by the
-                  Cluster API infrastructure-provider contract.
-                type: boolean
+                  initialization reports the KubeSwiftMachine initialization state.
+                  Part of the Cluster API infrastructure-provider contract (v1beta2).
+                properties:
+                  provisioned:
+                    description: |-
+                      provisioned is true when the infrastructure provider reports that the
+                      resource's infrastructure is fully provisioned.
+                    type: boolean
+                type: object
             type: object
         type: object
     served: true

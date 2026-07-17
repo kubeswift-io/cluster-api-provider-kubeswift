@@ -2,16 +2,19 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 )
 
 // KubeSwiftMachineSpec defines the desired state of KubeSwiftMachine.
 type KubeSwiftMachineSpec struct {
-	// providerID identifies the SwiftGuest VM backing this machine, in the form
-	// "kubeswift://<guest-namespace>/<guest-name>". The controller sets it once the
-	// VM is provisioned; the Cluster API Machine controller copies it onto the
-	// Node. Required by the infrastructure-provider contract.
+	// providerID must match the provider ID on the Node backing this machine, in
+	// the form "kubeswift://<guest-namespace>/<guest-name>". The controller sets it
+	// once the SwiftGuest VM is provisioned; the Cluster API Machine controller
+	// surfaces it on the Machine. Cluster API infrastructure-provider contract field.
 	// +optional
-	ProviderID *string `json:"providerID,omitempty"`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=512
+	ProviderID string `json:"providerID,omitempty"`
 
 	// imageRef names the SwiftImage the VM boots from (disk boot).
 	// +optional
@@ -30,11 +33,6 @@ type KubeSwiftMachineSpec struct {
 	// (a NetworkAttachmentDefinition). Empty uses the default pod network.
 	// +optional
 	NetworkRef string `json:"networkRef,omitempty"`
-
-	// failureDomain is the failure domain the VM is placed in. The controller
-	// copies it from the owning Cluster API Machine's spec.failureDomain.
-	// +optional
-	FailureDomain *string `json:"failureDomain,omitempty"`
 }
 
 // MachineResources overrides the guest-class sizing for a single machine.
@@ -52,25 +50,26 @@ type MachineResources struct {
 
 // KubeSwiftMachineStatus defines the observed state of KubeSwiftMachine.
 type KubeSwiftMachineStatus struct {
-	// ready denotes that the VM is provisioned and running. Required by the
-	// Cluster API infrastructure-provider contract.
+	// initialization reports the KubeSwiftMachine initialization state.
+	// Part of the Cluster API infrastructure-provider contract (v1beta2).
 	// +optional
-	Ready bool `json:"ready"`
+	Initialization InitializationStatus `json:"initialization,omitempty"`
 
-	// addresses lists the addresses assigned to the VM.
+	// addresses lists the addresses assigned to the VM, surfaced to the Machine.
 	// +optional
-	Addresses []MachineAddress `json:"addresses,omitempty"`
+	Addresses []clusterv1.MachineAddress `json:"addresses,omitempty"`
 
-	// failureReason is a terminal, programmatic failure cause. When set, the
-	// machine is not retried and requires manual intervention.
+	// failureDomain is the failure domain the VM was actually placed in, surfaced
+	// to the Machine.
 	// +optional
-	FailureReason *string `json:"failureReason,omitempty"`
-
-	// failureMessage is a human-readable description of a terminal failure.
-	// +optional
-	FailureMessage *string `json:"failureMessage,omitempty"`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
+	FailureDomain string `json:"failureDomain,omitempty"`
 
 	// conditions represents the observations of the KubeSwiftMachine's state.
+	// A condition of type "Ready" is mirrored into the Machine's InfrastructureReady
+	// condition. Per the v1beta2 contract, terminal failures are surfaced via
+	// conditions (there is no failureReason/failureMessage).
 	// +optional
 	// +listType=map
 	// +listMapKey=type
@@ -79,8 +78,9 @@ type KubeSwiftMachineStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:storageversion
 // +kubebuilder:resource:path=kubeswiftmachines,scope=Namespaced,categories=cluster-api
-// +kubebuilder:printcolumn:name="Ready",type=boolean,JSONPath=".status.ready",description="VM is provisioned and running"
+// +kubebuilder:printcolumn:name="Provisioned",type=boolean,JSONPath=".status.initialization.provisioned",description="VM is provisioned and running"
 // +kubebuilder:printcolumn:name="ProviderID",type=string,JSONPath=".spec.providerID",description="SwiftGuest provider ID"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 

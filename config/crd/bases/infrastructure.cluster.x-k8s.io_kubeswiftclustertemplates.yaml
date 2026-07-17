@@ -54,18 +54,25 @@ spec:
                   metadata:
                     description: metadata is the labels and annotations to stamp onto
                       the created object.
+                    minProperties: 1
                     properties:
                       annotations:
                         additionalProperties:
                           type: string
-                        description: annotations is a map of string keys and values
-                          to attach to the created object.
+                        description: |-
+                          annotations is an unstructured key value map stored with a resource that may be
+                          set by external tools to store and retrieve arbitrary metadata. They are not
+                          queryable and should be preserved when modifying objects.
+                          More info: http://kubernetes.io/docs/user-guide/annotations
                         type: object
                       labels:
                         additionalProperties:
                           type: string
-                        description: labels is a map of string keys and values to
-                          attach to the created object.
+                        description: |-
+                          labels is a map of string keys and values that can be used to organize and categorize
+                          (scope and select) objects. May match selectors of replication controllers
+                          and services.
+                          More info: http://kubernetes.io/docs/user-guide/labels
                         type: object
                     type: object
                   spec:
@@ -76,16 +83,22 @@ spec:
                           controlPlaneEndpoint is the endpoint used to reach the workload cluster's
                           Kubernetes API server. KubeSwift does not provision a load balancer, so this
                           is supplied by the operator (a control-plane VIP or an external load
-                          balancer) and must be set before the cluster reports Ready.
+                          balancer) or by the control-plane provider. When it is set, the controller
+                          reports the cluster provisioned.
+                        minProperties: 1
                         properties:
                           host:
-                            description: host is the DNS name or IP address on which
-                              the API server is serving.
+                            description: host is the hostname on which the API server
+                              is serving.
+                            maxLength: 512
+                            minLength: 1
                             type: string
                           port:
                             description: port is the port on which the API server
                               is serving.
                             format: int32
+                            maximum: 65535
+                            minimum: 1
                             type: integer
                         type: object
                       guestNamespace:

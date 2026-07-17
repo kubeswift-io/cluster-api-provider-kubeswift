@@ -2,6 +2,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 )
 
 // KubeSwiftClusterSpec defines the desired state of KubeSwiftCluster.
@@ -9,9 +10,10 @@ type KubeSwiftClusterSpec struct {
 	// controlPlaneEndpoint is the endpoint used to reach the workload cluster's
 	// Kubernetes API server. KubeSwift does not provision a load balancer, so this
 	// is supplied by the operator (a control-plane VIP or an external load
-	// balancer) and must be set before the cluster reports Ready.
+	// balancer) or by the control-plane provider. When it is set, the controller
+	// reports the cluster provisioned.
 	// +optional
-	ControlPlaneEndpoint APIEndpoint `json:"controlPlaneEndpoint,omitempty"`
+	ControlPlaneEndpoint *clusterv1.APIEndpoint `json:"controlPlaneEndpoint,omitempty"`
 
 	// guestNamespace is the namespace in which the SwiftGuest VMs backing this
 	// cluster's machines are created. Defaults to the KubeSwiftCluster's namespace.
@@ -21,12 +23,14 @@ type KubeSwiftClusterSpec struct {
 
 // KubeSwiftClusterStatus defines the observed state of KubeSwiftCluster.
 type KubeSwiftClusterStatus struct {
-	// ready denotes that the cluster infrastructure is ready. Required by the
-	// Cluster API infrastructure-provider contract.
+	// initialization reports the KubeSwiftCluster initialization state.
+	// Part of the Cluster API infrastructure-provider contract (v1beta2).
 	// +optional
-	Ready bool `json:"ready"`
+	Initialization InitializationStatus `json:"initialization,omitempty"`
 
 	// conditions represents the observations of the KubeSwiftCluster's state.
+	// A condition of type "Ready" is mirrored into the Cluster's
+	// InfrastructureReady condition.
 	// +optional
 	// +listType=map
 	// +listMapKey=type
@@ -35,8 +39,9 @@ type KubeSwiftClusterStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:storageversion
 // +kubebuilder:resource:path=kubeswiftclusters,scope=Namespaced,categories=cluster-api
-// +kubebuilder:printcolumn:name="Ready",type=boolean,JSONPath=".status.ready",description="Cluster infrastructure is ready"
+// +kubebuilder:printcolumn:name="Provisioned",type=boolean,JSONPath=".status.initialization.provisioned",description="Cluster infrastructure is provisioned"
 // +kubebuilder:printcolumn:name="Endpoint",type=string,JSONPath=".spec.controlPlaneEndpoint.host",description="Control plane endpoint host"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 

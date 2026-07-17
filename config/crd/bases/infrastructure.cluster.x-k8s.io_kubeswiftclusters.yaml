@@ -17,9 +17,9 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - description: Cluster infrastructure is ready
-      jsonPath: .status.ready
-      name: Ready
+    - description: Cluster infrastructure is provisioned
+      jsonPath: .status.initialization.provisioned
+      name: Provisioned
       type: boolean
     - description: Control plane endpoint host
       jsonPath: .spec.controlPlaneEndpoint.host
@@ -60,15 +60,20 @@ spec:
                   controlPlaneEndpoint is the endpoint used to reach the workload cluster's
                   Kubernetes API server. KubeSwift does not provision a load balancer, so this
                   is supplied by the operator (a control-plane VIP or an external load
-                  balancer) and must be set before the cluster reports Ready.
+                  balancer) or by the control-plane provider. When it is set, the controller
+                  reports the cluster provisioned.
+                minProperties: 1
                 properties:
                   host:
-                    description: host is the DNS name or IP address on which the API
-                      server is serving.
+                    description: host is the hostname on which the API server is serving.
+                    maxLength: 512
+                    minLength: 1
                     type: string
                   port:
                     description: port is the port on which the API server is serving.
                     format: int32
+                    maximum: 65535
+                    minimum: 1
                     type: integer
                 type: object
               guestNamespace:
@@ -81,8 +86,10 @@ spec:
             description: KubeSwiftClusterStatus defines the observed state of KubeSwiftCluster.
             properties:
               conditions:
-                description: conditions represents the observations of the KubeSwiftCluster's
-                  state.
+                description: |-
+                  conditions represents the observations of the KubeSwiftCluster's state.
+                  A condition of type "Ready" is mirrored into the Cluster's
+                  InfrastructureReady condition.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -141,11 +148,17 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              ready:
+              initialization:
                 description: |-
-                  ready denotes that the cluster infrastructure is ready. Required by the
-                  Cluster API infrastructure-provider contract.
-                type: boolean
+                  initialization reports the KubeSwiftCluster initialization state.
+                  Part of the Cluster API infrastructure-provider contract (v1beta2).
+                properties:
+                  provisioned:
+                    description: |-
+                      provisioned is true when the infrastructure provider reports that the
+                      resource's infrastructure is fully provisioned.
+                    type: boolean
+                type: object
             type: object
         type: object
     served: true
