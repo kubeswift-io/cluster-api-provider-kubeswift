@@ -25,3 +25,8 @@ go.work
 *.swp
 *.swo
 *~
+
+# AI tooling + local dev-environment artifacts (kept local, not committed)
+.claude/
+CLAUDE.md
+.devcontainer/

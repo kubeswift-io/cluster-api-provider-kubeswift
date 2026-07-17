@@ -13,8 +13,11 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the Cluster API v1beta2 infrastructure-provider contract fields (control-plane
   endpoint, `providerID`, `status.initialization.provisioned`, addresses, conditions).
 - Architecture design doc (`docs/design/capi-kubeswift-architecture.md`).
-- Apache-2.0 license; AI tooling (`.claude/`, `CLAUDE.md`) and design docs are
-  tracked in-repo (a departure from the KubeSwift core repo).
+- Apache-2.0 license. Design and spike docs (`docs/design/`, `docs/spikes/`) are
+  tracked in-repo; AI tooling (`.claude/`, `CLAUDE.md`, `.devcontainer/`) is
+  gitignored and kept local (matching the KubeSwift core repo).
+- CI: golangci-lint v2 (v1.63.4 cannot lint on `go 1.25`); the scaffolded Kind e2e
+  workflow is manual-only until a real Cluster API + KubeSwift e2e harness exists.
 
 ### Changed
 - Grounded against Cluster API **v1.13.4**: the CRDs target the **v1beta2**
