@@ -1,0 +1,13 @@
+# clusterctl provider metadata: maps this provider's release series to the
+# Cluster API contract it implements. clusterctl reads this to decide
+# compatibility with the installed Cluster API version.
+#
+# NOTE: the contract value below is provisional. It is confirmed against the
+# target Cluster API version when the controllers actually implement the
+# contract (see docs/design/capi-kubeswift-architecture.md, Phases).
+apiVersion: clusterctl.cluster.x-k8s.io/v1alpha3
+kind: Metadata
+releaseSeries:
+  - major: 0
+    minor: 1
+    contract: v1beta1

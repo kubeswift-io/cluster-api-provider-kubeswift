@@ -1,0 +1,8 @@
+cluster-api-provider-kubeswift
+Copyright 2026 The KubeSwift Authors
+
+KubeSwift was created by William Rizzo.
+
+This product includes software developed for the Kubernetes Cluster API project
+(https://cluster-api.sigs.k8s.io/). The Cluster API infrastructure-provider
+contract and conventions are used under the terms of the Apache License 2.0.

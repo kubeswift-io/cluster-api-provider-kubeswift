@@ -1,0 +1,7 @@
+## Append samples of your project ##
+resources:
+- infrastructure_v1alpha1_kubeswiftcluster.yaml
+- infrastructure_v1alpha1_kubeswiftmachine.yaml
+- infrastructure_v1alpha1_kubeswiftclustertemplate.yaml
+- infrastructure_v1alpha1_kubeswiftmachinetemplate.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

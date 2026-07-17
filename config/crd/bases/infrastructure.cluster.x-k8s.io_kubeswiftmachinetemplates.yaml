@@ -1,0 +1,126 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.2
+  name: kubeswiftmachinetemplates.infrastructure.cluster.x-k8s.io
+spec:
+  group: infrastructure.cluster.x-k8s.io
+  names:
+    categories:
+    - cluster-api
+    kind: KubeSwiftMachineTemplate
+    listKind: KubeSwiftMachineTemplateList
+    plural: kubeswiftmachinetemplates
+    singular: kubeswiftmachinetemplate
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: KubeSwiftMachineTemplate is the Schema for the kubeswiftmachinetemplates
+          API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: KubeSwiftMachineTemplateSpec defines the desired state of
+              KubeSwiftMachineTemplate.
+            properties:
+              template:
+                description: |-
+                  template is the KubeSwiftMachine that MachineDeployments and ClusterClass
+                  stamp out.
+                properties:
+                  metadata:
+                    description: metadata is the labels and annotations to stamp onto
+                      the created object.
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: annotations is a map of string keys and values
+                          to attach to the created object.
+                        type: object
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: labels is a map of string keys and values to
+                          attach to the created object.
+                        type: object
+                    type: object
+                  spec:
+                    description: spec is the KubeSwiftMachineSpec to stamp out.
+                    properties:
+                      failureDomain:
+                        description: |-
+                          failureDomain is the failure domain the VM is placed in. The controller
+                          copies it from the owning Cluster API Machine's spec.failureDomain.
+                        type: string
+                      guestClassRef:
+                        description: |-
+                          guestClassRef names the SwiftGuestClass that supplies the VM's CPU, memory,
+                          and disk sizing.
+                        type: string
+                      imageRef:
+                        description: imageRef names the SwiftImage the VM boots from
+                          (disk boot).
+                        type: string
+                      networkRef:
+                        description: |-
+                          networkRef optionally attaches the VM's primary interface to a named network
+                          (a NetworkAttachmentDefinition). Empty uses the default pod network.
+                        type: string
+                      providerID:
+                        description: |-
+                          providerID identifies the SwiftGuest VM backing this machine, in the form
+                          "kubeswift://<guest-namespace>/<guest-name>". The controller sets it once the
+                          VM is provisioned; the Cluster API Machine controller copies it onto the
+                          Node. Required by the infrastructure-provider contract.
+                        type: string
+                      resources:
+                        description: resources optionally overrides the CPU and memory
+                          from the guest class.
+                        properties:
+                          cpu:
+                            description: cpu is the number of vCPUs.
+                            format: int32
+                            minimum: 1
+                            type: integer
+                          memoryMiB:
+                            description: memoryMiB is the guest memory in MiB.
+                            format: int64
+                            minimum: 1
+                            type: integer
+                        type: object
+                    type: object
+                required:
+                - spec
+                type: object
+            required:
+            - template
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources: {}
