@@ -17,10 +17,14 @@ metadata:
   namespace: default
 spec:
   clusterNetwork:
+    # Must NOT overlap the management cluster's pod/service CIDRs or the guest NAT range
+    # (192.168.99.0/24): the workload nodes are VMs on the management cluster's network,
+    # so overlapping ranges make in-guest Service traffic (e.g. the kubernetes Service
+    # 10.96.0.1) leak to the management cluster and the CNI fail.
     pods:
-      cidrBlocks: ["192.168.0.0/16"]
+      cidrBlocks: ["172.20.0.0/16"]
     services:
-      cidrBlocks: ["10.128.0.0/12"]
+      cidrBlocks: ["172.21.0.0/16"]
   controlPlaneRef:
     apiGroup: controlplane.cluster.x-k8s.io
     kind: KubeadmControlPlane
@@ -58,17 +62,11 @@ spec:
         name: ks-quickstart-cp
   kubeadmConfigSpec:
     initConfiguration:
-      nodeRegistration:
-        # KubeSwift is agnostic to providerID; the provider injects the matching value
-        # via the bootstrap data, so no in-guest cloud-provider is required.
-        kubeletExtraArgs:
-          - name: cloud-provider
-            value: external
+      # KubeSwift is agnostic to providerID; the provider sets each Node's providerID by
+      # patching the Node directly (no CCM), so no in-guest cloud-provider is required.
+      nodeRegistration: {}
     joinConfiguration:
-      nodeRegistration:
-        kubeletExtraArgs:
-          - name: cloud-provider
-            value: external
+      nodeRegistration: {}
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
 kind: KubeSwiftMachineTemplate
@@ -131,10 +129,7 @@ spec:
   template:
     spec:
       joinConfiguration:
-        nodeRegistration:
-          kubeletExtraArgs:
-            - name: cloud-provider
-              value: external
+        nodeRegistration: {}
 ---
 # Prerequisite KubeSwift resources (create once; not owned by Cluster API).
 # SwiftGuestClass is cluster-scoped and supplies CPU/memory/disk (SwiftGuest carries no
