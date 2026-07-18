@@ -36,6 +36,23 @@ type Request struct {
 	// (scheme "kubeswift://<namespace>/<name>"). The backend injects it into the
 	// node via the bootstrap data so the Node registers with a matching ID.
 	ProviderID string
+	// ControlPlaneExposure, when non-nil, asks the backend to expose the backing VM's
+	// API-server port through KubeSwift's in-pod DNAT and to stamp the VM with the label
+	// the KubeSwiftCluster's endpoint Service selects. The machine controller sets it
+	// only for control-plane machines when the cluster uses Service-backed endpoint
+	// provisioning (endpoint.mode=Service).
+	ControlPlaneExposure *ControlPlaneExposure
+}
+
+// ControlPlaneExposure tells a backend how to make a control-plane VM's API server
+// reachable through the KubeSwiftCluster's endpoint Service.
+type ControlPlaneExposure struct {
+	// PoolLabel is the value of the KubeSwift pool-selector label stamped on the VM; the
+	// KubeSwiftCluster's Service selects the launcher pods carrying it. (This is the only
+	// guest-settable label KubeSwift propagates to the launcher pod.)
+	PoolLabel string
+	// Port is the API-server port exposed via in-pod DNAT (pod:Port -> vm:Port).
+	Port int32
 }
 
 // Result reports the outcome of a Backend reconcile.

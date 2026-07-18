@@ -81,10 +81,11 @@ spec:
                       controlPlaneEndpoint:
                         description: |-
                           controlPlaneEndpoint is the endpoint used to reach the workload cluster's
-                          Kubernetes API server. KubeSwift does not provision a load balancer, so this
-                          is supplied by the operator (a control-plane VIP or an external load
-                          balancer) or by the control-plane provider. When it is set, the controller
-                          reports the cluster provisioned.
+                          Kubernetes API server. It is the resolved endpoint: with endpoint.mode=External
+                          the operator supplies it (a control-plane VIP or external load balancer); with
+                          endpoint.mode=Service or RoutableIP the provider provisions and writes it. Once
+                          it is set, the controller reports the cluster provisioned and the core Cluster
+                          controller surfaces it onto Cluster.spec.controlPlaneEndpoint.
                         minProperties: 1
                         properties:
                           host:
@@ -100,6 +101,64 @@ spec:
                             maximum: 65535
                             minimum: 1
                             type: integer
+                        type: object
+                      endpoint:
+                        description: |-
+                          endpoint configures how the provider establishes the control-plane endpoint.
+                          When unset (or mode=External), the operator supplies controlPlaneEndpoint and the
+                          provider provisions nothing.
+                        properties:
+                          mode:
+                            default: External
+                            description: |-
+                              mode selects the endpoint strategy:
+                                External — the operator supplies spec.controlPlaneEndpoint; the provider
+                                           provisions nothing.
+                                Service  — the provider mints a Kubernetes Service in the management cluster
+                                           fronting the control-plane guests on the API-server port, and
+                                           reports its address as the endpoint. CNI-agnostic (no OVN needed).
+                              (RoutableIP — use the control-plane guest's OVN-routable IP — is planned; see
+                              docs/design/control-plane-endpoint.md.)
+                            enum:
+                            - External
+                            - Service
+                            type: string
+                          service:
+                            description: service configures the Service-backed endpoint.
+                              Used when mode=Service.
+                            properties:
+                              annotations:
+                                additionalProperties:
+                                  type: string
+                                description: |-
+                                  annotations are copied onto the Service (e.g. a MetalLB address pool or an
+                                  external-dns hostname). Chiefly useful with type=LoadBalancer.
+                                type: object
+                              loadBalancerClass:
+                                description: |-
+                                  loadBalancerClass selects a specific load-balancer implementation. Only valid with
+                                  type=LoadBalancer.
+                                type: string
+                              port:
+                                default: 6443
+                                description: port is the API-server port fronted by
+                                  the Service.
+                                format: int32
+                                maximum: 65535
+                                minimum: 1
+                                type: integer
+                              type:
+                                default: ClusterIP
+                                description: |-
+                                  type is the Service type fronting the control-plane guests. ClusterIP is reachable
+                                  from the management cluster (the CAPI controllers and worker VMs) and is enough for
+                                  a CAPI-managed cluster to form; LoadBalancer additionally exposes the endpoint
+                                  outside the management cluster (e.g. for operator kubectl access).
+                                enum:
+                                - ClusterIP
+                                - LoadBalancer
+                                type: string
+                            type: object
                         type: object
                       guestNamespace:
                         description: |-

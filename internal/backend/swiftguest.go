@@ -51,6 +51,11 @@ func (b *SwiftGuestBackend) Reconcile(ctx context.Context, req Request) (Result,
 	if cfg.ImageRef == "" || cfg.GuestClassRef == "" {
 		return Result{}, fmt.Errorf("spec.backend.swiftGuest.imageRef and guestClassRef are required")
 	}
+	if req.ControlPlaneExposure != nil && cfg.NetworkRef != "" {
+		// Service-backed endpoint provisioning exposes the API server over the pod
+		// network (nat binding); a bridge/NAD networkRef is incompatible with it.
+		return Result{}, fmt.Errorf("control-plane machine using Service-backed endpoint provisioning must not set spec.backend.swiftGuest.networkRef")
+	}
 
 	if err := b.ensureSeedProfile(ctx, req); err != nil {
 		return Result{}, fmt.Errorf("ensuring SwiftSeedProfile: %w", err)
@@ -140,6 +145,18 @@ func (b *SwiftGuestBackend) ensureSwiftGuest(ctx context.Context, req Request, c
 		return nil, err
 	}
 
+	guest := renderSwiftGuest(req, cfg)
+	if err := b.Client.Create(ctx, guest); err != nil {
+		return nil, err
+	}
+	return guest, nil
+}
+
+// renderSwiftGuest builds the SwiftGuest object for a machine (pure; no client). For a
+// control-plane machine under Service-backed endpoint provisioning it also stamps the
+// KubeSwift pool-selector label and a nat-bound DNAT exposure of the API-server port so
+// the KubeSwiftCluster's Service can front it.
+func renderSwiftGuest(req Request, cfg *infrav1.SwiftGuestBackend) *unstructured.Unstructured {
 	spec := map[string]interface{}{
 		"imageRef":       localRef(cfg.ImageRef),
 		"guestClassRef":  localRef(cfg.GuestClassRef),
@@ -148,8 +165,24 @@ func (b *SwiftGuestBackend) ensureSwiftGuest(ctx context.Context, req Request, c
 	if cfg.NetworkRef != "" {
 		spec["interfaces"] = []interface{}{
 			map[string]interface{}{
-				"name":       "primary",
+				nameField:    "primary",
 				"networkRef": localRef(cfg.NetworkRef),
+			},
+		}
+	}
+	if req.ControlPlaneExposure != nil {
+		// Expose the API-server port via KubeSwift's in-pod DNAT (nat binding, no
+		// per-guest "expose" — the KubeSwiftCluster mints one Service selecting all
+		// control-plane guests). See docs/design/control-plane-endpoint.md.
+		port := int64(req.ControlPlaneExposure.Port)
+		spec["network"] = map[string]interface{}{
+			"binding": "nat",
+			"ports": []interface{}{
+				map[string]interface{}{
+					nameField:    infrav1.APIServerPortName,
+					"port":       port,
+					"targetPort": port,
+				},
 			},
 		}
 	}
@@ -158,17 +191,22 @@ func (b *SwiftGuestBackend) ensureSwiftGuest(ctx context.Context, req Request, c
 	guest.SetNamespace(req.GuestNamespace)
 	guest.SetName(req.Machine.Name)
 	setKubeSwiftLabels(guest, req)
-	guest.Object["spec"] = spec
-	if err := b.Client.Create(ctx, guest); err != nil {
-		return nil, err
+	if req.ControlPlaneExposure != nil {
+		labels := guest.GetLabels()
+		labels[infrav1.ControlPlanePoolLabelKey] = req.ControlPlaneExposure.PoolLabel
+		guest.SetLabels(labels)
 	}
-	return guest, nil
+	guest.Object["spec"] = spec
+	return guest
 }
+
+// nameField is the "name" key used throughout the unstructured SwiftGuest spec.
+const nameField = "name"
 
 // localRef renders a corev1.LocalObjectReference as an unstructured map (KubeSwift
 // imageRef/guestClassRef/seedProfileRef are LocalObjectReferences — name only).
 func localRef(name string) map[string]interface{} {
-	return map[string]interface{}{"name": name}
+	return map[string]interface{}{nameField: name}
 }
 
 func newUnstructured(gvk schema.GroupVersionKind) *unstructured.Unstructured {

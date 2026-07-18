@@ -3,9 +3,11 @@ package controller
 import (
 	"context"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
 	"sigs.k8s.io/cluster-api/util/conditions"
@@ -28,11 +30,13 @@ type KubeSwiftClusterReconciler struct {
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=kubeswiftclusters/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=kubeswiftclusters/finalizers,verbs=update
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters;clusters/status,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile drives a KubeSwiftCluster to the state the Cluster API contract expects:
 // once a control-plane endpoint is known, it reports the cluster infrastructure
-// provisioned. KubeSwift provisions no load balancer, so the endpoint is supplied by
-// the operator (or control-plane provider) on spec.controlPlaneEndpoint.
+// provisioned. How the endpoint is established depends on spec.endpoint.mode:
+// External (operator-supplied) or Service (the provider mints a Kubernetes Service
+// fronting the control-plane guests — CNI-agnostic, works without OVN).
 func (r *KubeSwiftClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, rerr error) {
 	log := logf.FromContext(ctx)
 
@@ -75,48 +79,74 @@ func (r *KubeSwiftClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}()
 
 	if !ksc.DeletionTimestamp.IsZero() {
-		return r.reconcileDelete(ksc)
+		return r.reconcileDelete(ctx, ksc)
 	}
-	return r.reconcileNormal(ksc)
+	return r.reconcileNormal(ctx, ksc, cluster)
 }
 
-func (r *KubeSwiftClusterReconciler) reconcileNormal(ksc *infrav1.KubeSwiftCluster) (ctrl.Result, error) {
+func (r *KubeSwiftClusterReconciler) reconcileNormal(ctx context.Context, ksc *infrav1.KubeSwiftCluster, cluster *clusterv1.Cluster) (ctrl.Result, error) {
 	controllerutil.AddFinalizer(ksc, infrav1.ClusterFinalizer)
 
-	// KubeSwift does not provision a control-plane endpoint. Wait for the operator
-	// (or the control-plane provider) to set spec.controlPlaneEndpoint; once set, the
-	// core Cluster controller surfaces it onto Cluster.spec.controlPlaneEndpoint.
-	if ksc.Spec.ControlPlaneEndpoint == nil || ksc.Spec.ControlPlaneEndpoint.Host == "" {
-		ksc.Status.Initialization.Provisioned = ptr.To(false)
-		conditions.Set(ksc, metav1.Condition{
-			Type:    infrav1.ReadyConditionType,
-			Status:  metav1.ConditionFalse,
-			Reason:  infrav1.WaitingForControlPlaneEndpointReason,
-			Message: "Waiting for spec.controlPlaneEndpoint to be set",
-		})
-		return ctrl.Result{}, nil
+	// Service-backed endpoint: the provider mints a Service fronting the control-plane
+	// guests and adopts its address as the endpoint. CNI-agnostic (no OVN needed).
+	if endpointMode(ksc) == infrav1.EndpointModeService {
+		return r.reconcileServiceEndpoint(ctx, ksc, cluster)
 	}
 
+	// External endpoint: wait for the operator (or the control-plane provider) to set
+	// spec.controlPlaneEndpoint; once set, the core Cluster controller surfaces it onto
+	// Cluster.spec.controlPlaneEndpoint.
+	if ksc.Spec.ControlPlaneEndpoint == nil || ksc.Spec.ControlPlaneEndpoint.Host == "" {
+		markClusterNotProvisioned(ksc, infrav1.WaitingForControlPlaneEndpointReason, "Waiting for spec.controlPlaneEndpoint to be set")
+		return ctrl.Result{}, nil
+	}
+	markClusterProvisioned(ksc)
+	return ctrl.Result{}, nil
+}
+
+func (r *KubeSwiftClusterReconciler) reconcileDelete(ctx context.Context, ksc *infrav1.KubeSwiftCluster) (ctrl.Result, error) {
+	// The endpoint Service (Service mode) is owner-referenced to the KubeSwiftCluster and
+	// garbage collected with it; delete it explicitly too so teardown does not depend on
+	// GC ordering.
+	if err := r.deleteControlPlaneService(ctx, ksc); err != nil {
+		return ctrl.Result{}, err
+	}
+	controllerutil.RemoveFinalizer(ksc, infrav1.ClusterFinalizer)
+	return ctrl.Result{}, nil
+}
+
+// endpointMode returns the effective endpoint provisioning mode (default External).
+func endpointMode(ksc *infrav1.KubeSwiftCluster) string {
+	if ksc.Spec.Endpoint == nil || ksc.Spec.Endpoint.Mode == "" {
+		return infrav1.EndpointModeExternal
+	}
+	return ksc.Spec.Endpoint.Mode
+}
+
+func markClusterProvisioned(ksc *infrav1.KubeSwiftCluster) {
 	ksc.Status.Initialization.Provisioned = ptr.To(true)
 	conditions.Set(ksc, metav1.Condition{
 		Type:   infrav1.ReadyConditionType,
 		Status: metav1.ConditionTrue,
 		Reason: infrav1.ClusterProvisionedReason,
 	})
-	return ctrl.Result{}, nil
 }
 
-func (r *KubeSwiftClusterReconciler) reconcileDelete(ksc *infrav1.KubeSwiftCluster) (ctrl.Result, error) {
-	// KubeSwift provisions no cluster-scoped infrastructure, so there is nothing to
-	// tear down. Release the finalizer.
-	controllerutil.RemoveFinalizer(ksc, infrav1.ClusterFinalizer)
-	return ctrl.Result{}, nil
+func markClusterNotProvisioned(ksc *infrav1.KubeSwiftCluster, reason, message string) {
+	ksc.Status.Initialization.Provisioned = ptr.To(false)
+	conditions.Set(ksc, metav1.Condition{
+		Type:    infrav1.ReadyConditionType,
+		Status:  metav1.ConditionFalse,
+		Reason:  reason,
+		Message: message,
+	})
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *KubeSwiftClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&infrav1.KubeSwiftCluster{}).
+		Owns(&corev1.Service{}). // re-reconcile when the endpoint Service gets an address
 		Named("kubeswiftcluster").
 		Complete(r)
 }
