@@ -160,6 +160,17 @@ func (r *KubeSwiftMachineReconciler) reconcileNormal(
 		Status: metav1.ConditionTrue,
 		Reason: infrav1.VMProvisionedReason,
 	})
+
+	// The kubelet registers the Node with no providerID, so patch it on the workload
+	// cluster — this is what lets the core Machine controller bind the Machine to its
+	// Node. Best-effort: requeue until the control plane is reachable and the Node exists.
+	patched, err := r.ensureNodeProviderID(ctx, cluster, ksm.Name, providerID)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if !patched {
+		return ctrl.Result{RequeueAfter: machineRequeueAfter}, nil
+	}
 	return ctrl.Result{}, nil
 }
 

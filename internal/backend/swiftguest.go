@@ -128,8 +128,12 @@ func (b *SwiftGuestBackend) ensureSeedProfile(ctx context.Context, req Request) 
 	setKubeSwiftLabels(seed, req)
 	seed.Object["spec"] = map[string]interface{}{
 		"datasource": "NoCloud",
-		"userData":   renderBootstrapUserData(req.BootstrapData, req.ProviderID),
-		"metaData":   fmt.Sprintf("instance-id: %s\nlocal-hostname: %s\n", req.Machine.Name, req.Machine.Name),
+		// The Cluster API bootstrap cloud-init is used verbatim. The kubelet provider-id
+		// is NOT injected here — the controller patches the workload Node's providerID
+		// directly (reliable; see internal/controller/workload_node.go), which supersedes
+		// the fragile cloud-init drop-in path.
+		"userData": string(req.BootstrapData),
+		"metaData": fmt.Sprintf("instance-id: %s\nlocal-hostname: %s\n", req.Machine.Name, req.Machine.Name),
 	}
 	return b.Client.Create(ctx, seed)
 }
