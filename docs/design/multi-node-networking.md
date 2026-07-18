@@ -124,14 +124,29 @@ Consequences for the primary-UDN path:
   default IP to the CP guest's UDN IP, fronted by a management Service / MetalLB LB. That
   is a real per-cluster component (a management-cluster LoadBalancer proxy).
 
-**Alternative that avoids both hard parts — nat default + *secondary* UDN.** Keep the
-guest `nat`-bound on the default network (apiserver reachable at the pod IP via the
+**Alternative that avoids both hard parts — nat default + *secondary* UDN (VALIDATED, chosen).**
+Keep the guest `nat`-bound on the default network (apiserver reachable at the pod IP via the
 existing in-pod DNAT → management controllers reach it, no proxy) **and** attach a
 *secondary* UDN via `networkRef` for a routable second interface. Set the node's
 `--node-ip` to that secondary-UDN IP (it is a *local* interface IP, so kubelet accepts it —
-no CCM), discovered at boot. This pairs the easy endpoint (nat DNAT) with the easy datapath
-(routable UDN). Cost: a provider change to allow `networkRef` *together with* the nat
-endpoint (today they are mutually exclusive), and a boot-time node-ip step.
+no CCM), discovered at boot.
+
+**Validated on ntx (2026-07-18)** with a multi-NIC guest (`spec.interfaces[]` = a primary
+`mgmt` with no `networkRef` + a secondary `udn` with `networkRef` to a **secondary**-role
+UDN `sec-net`, `10.210.0.0/16`):
+
+- `mgmt` gets the nat IP `192.168.99.18`, and the launcher pod's **default network is
+  `role: primary`** (reachable, DNAT-able) — **not** infrastructure-locked as it was on the
+  primary UDN. So the endpoint works via the existing nat DNAT, no proxy.
+- `udn` is attached to the secondary UDN (`10.210.0.3`), and pod-to-pod on that segment is
+  reachable **cross-node** (ntx1 → ntx2, 0% loss, ~2 ms).
+- **The one boot step:** the guest brings up only its first interface by default, so its
+  second interface must be DHCP-configured at boot to actually hold the secondary-UDN IP;
+  then `--node-ip` is set to it.
+
+Cost: a provider change — emit `spec.interfaces[]` (nat primary + secondary-UDN `networkRef`)
+and lift the "`networkRef` XOR nat endpoint" rejection, plus the boot-time interface-up +
+`--node-ip` step. This is the chosen path for ntx.
 
 ## Plan
 
