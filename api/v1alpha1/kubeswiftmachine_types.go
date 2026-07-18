@@ -64,6 +64,19 @@ type SwiftGuestBackend struct {
 	// (a NetworkAttachmentDefinition). Empty uses the default node-local network.
 	// +optional
 	NetworkRef string `json:"networkRef,omitempty"`
+
+	// nodeNetworkRef optionally attaches a SECONDARY interface to a named routable
+	// network (a NetworkAttachmentDefinition — e.g. an OVN-Kubernetes secondary UDN)
+	// that carries the workload node datapath: apiserver<->kubelet and the pod overlay,
+	// with unique cross-node-routable IPs. The primary interface stays node-local (nat),
+	// so the control-plane endpoint remains reachable from the management cluster (no
+	// proxy). Each node's kubelet --node-ip must be set to this interface's address (a
+	// bootstrap step). Use this for multi-node clusters when the primary pod network is
+	// not itself node-routable. Composes with a Service-backed control-plane endpoint;
+	// unlike networkRef (which makes the named network the guest's *primary*), it does
+	// not isolate the apiserver from the management controllers.
+	// +optional
+	NodeNetworkRef string `json:"nodeNetworkRef,omitempty"`
 }
 
 // KubeSwiftMachineStatus defines the observed state of KubeSwiftMachine.

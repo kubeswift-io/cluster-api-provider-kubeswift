@@ -166,12 +166,23 @@ func renderSwiftGuest(req Request, cfg *infrav1.SwiftGuestBackend) *unstructured
 		"guestClassRef":  localRef(cfg.GuestClassRef),
 		"seedProfileRef": localRef(seedName(req.Machine.Name)),
 	}
-	if cfg.NetworkRef != "" {
+	switch {
+	case cfg.NetworkRef != "":
+		// The named network is the guest's PRIMARY interface.
 		spec["interfaces"] = []interface{}{
 			map[string]interface{}{
 				nameField:    "primary",
 				"networkRef": localRef(cfg.NetworkRef),
 			},
+		}
+	case cfg.NodeNetworkRef != "":
+		// Multi-node: a node-local nat primary (management + the reachable control-plane
+		// endpoint) plus a secondary routable interface carrying the node datapath
+		// (apiserver<->kubelet + pod overlay). The bootstrap sets kubelet --node-ip to
+		// the secondary interface's address.
+		spec["interfaces"] = []interface{}{
+			map[string]interface{}{nameField: "mgmt", "primary": true},
+			map[string]interface{}{nameField: "node", "networkRef": localRef(cfg.NodeNetworkRef)},
 		}
 	}
 	if req.ControlPlaneExposure != nil {

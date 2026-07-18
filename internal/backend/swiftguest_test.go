@@ -78,3 +78,30 @@ func TestRenderSwiftGuest_NoExposure(t *testing.T) {
 		t.Fatal("pool label should be absent without control-plane exposure")
 	}
 }
+
+// TestRenderSwiftGuest_NodeNetworkRef verifies the multi-node shape: a nat primary
+// (management + the reachable endpoint) plus a secondary routable node-datapath
+// interface, composing with the Service-backed nat endpoint (no rejection).
+func TestRenderSwiftGuest_NodeNetworkRef(t *testing.T) {
+	req, cfg := testRenderRequest(&ControlPlaneExposure{PoolLabel: "demo-cp", Port: 6443}, "")
+	cfg.NodeNetworkRef = "sec-net"
+	g := renderSwiftGuest(req, cfg)
+
+	ifaces, _, _ := unstructured.NestedSlice(g.Object, "spec", "interfaces")
+	if len(ifaces) != 2 {
+		t.Fatalf("want 2 interfaces (nat primary + secondary node network), got %d", len(ifaces))
+	}
+	primary, _ := ifaces[0].(map[string]interface{})
+	if _, hasRef := primary["networkRef"]; hasRef {
+		t.Fatal("the primary interface must be node-local nat (no networkRef)")
+	}
+	secondary, _ := ifaces[1].(map[string]interface{})
+	ref, _ := secondary["networkRef"].(map[string]interface{})
+	if ref["name"] != "sec-net" {
+		t.Fatalf("secondary interface networkRef = %v, want sec-net", ref["name"])
+	}
+	// The nat endpoint still applies (node-network is a secondary, not the primary).
+	if binding, _, _ := unstructured.NestedString(g.Object, "spec", "network", "binding"); binding != "nat" {
+		t.Fatalf("network.binding = %q, want nat (endpoint coexists with the node network)", binding)
+	}
+}
