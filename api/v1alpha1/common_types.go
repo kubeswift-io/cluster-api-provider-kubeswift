@@ -15,11 +15,11 @@ type InitializationStatus struct {
 const (
 	// ClusterFinalizer lets the controller clean up cluster infrastructure before
 	// the KubeSwiftCluster is removed from the API server.
-	ClusterFinalizer = "kubeswiftcluster.infrastructure.cluster.x-k8s.io"
+	ClusterFinalizer = "kubeswiftcluster.infrastructure.cluster.x-k8s.io/finalizer"
 
 	// MachineFinalizer lets the controller delete the backing SwiftGuest VM before
 	// the KubeSwiftMachine is removed from the API server.
-	MachineFinalizer = "kubeswiftmachine.infrastructure.cluster.x-k8s.io"
+	MachineFinalizer = "kubeswiftmachine.infrastructure.cluster.x-k8s.io/finalizer"
 )
 
 // ProviderIDScheme is the scheme used for KubeSwiftMachine provider IDs:
