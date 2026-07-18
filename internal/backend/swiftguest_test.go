@@ -1,0 +1,80 @@
+package backend
+
+import (
+	"context"
+	"testing"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+
+	infrav1 "github.com/kubeswift-io/cluster-api-provider-kubeswift/api/v1alpha1"
+)
+
+func testRenderRequest(exposure *ControlPlaneExposure, networkRef string) (Request, *infrav1.SwiftGuestBackend) {
+	req := Request{
+		Machine:              &infrav1.KubeSwiftMachine{ObjectMeta: metav1.ObjectMeta{Name: "cp-0", Namespace: "ns"}},
+		Cluster:              &clusterv1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "demo"}},
+		GuestNamespace:       "ns",
+		ControlPlaneExposure: exposure,
+	}
+	cfg := &infrav1.SwiftGuestBackend{ImageRef: "img", GuestClassRef: "class", NetworkRef: networkRef}
+	return req, cfg
+}
+
+func TestRenderSwiftGuest_ControlPlaneExposure(t *testing.T) {
+	req, cfg := testRenderRequest(&ControlPlaneExposure{PoolLabel: "demo-cp", Port: 6443}, "")
+	g := renderSwiftGuest(req, cfg)
+
+	if got := g.GetLabels()[infrav1.ControlPlanePoolLabelKey]; got != "demo-cp" {
+		t.Fatalf("pool label = %q, want demo-cp", got)
+	}
+	if binding, _, _ := unstructured.NestedString(g.Object, "spec", "network", "binding"); binding != "nat" {
+		t.Fatalf("network.binding = %q, want nat", binding)
+	}
+	ports, _, _ := unstructured.NestedSlice(g.Object, "spec", "network", "ports")
+	if len(ports) != 1 {
+		t.Fatalf("want 1 exposed port, got %d", len(ports))
+	}
+	p, ok := ports[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("port entry is %T, want map", ports[0])
+	}
+	if p["port"] != int64(6443) || p["targetPort"] != int64(6443) {
+		t.Fatalf("port/targetPort = %v/%v, want 6443/6443", p["port"], p["targetPort"])
+	}
+}
+
+// TestReconcile_ExposureWithNetworkRefIsRejected checks the guard fires before any
+// client use, so a nil-client backend is fine here.
+func TestReconcile_ExposureWithNetworkRefIsRejected(t *testing.T) {
+	b := &SwiftGuestBackend{}
+	req := Request{
+		Machine: &infrav1.KubeSwiftMachine{
+			ObjectMeta: metav1.ObjectMeta{Name: "cp-0", Namespace: "ns"},
+			Spec: infrav1.KubeSwiftMachineSpec{
+				Backend: infrav1.MachineBackend{
+					Type:       infrav1.SwiftGuestBackendType,
+					SwiftGuest: &infrav1.SwiftGuestBackend{ImageRef: "img", GuestClassRef: "class", NetworkRef: "nad"},
+				},
+			},
+		},
+		ControlPlaneExposure: &ControlPlaneExposure{PoolLabel: "demo-cp", Port: 6443},
+		GuestNamespace:       "ns",
+	}
+	if _, err := b.Reconcile(context.Background(), req); err == nil {
+		t.Fatal("expected an error when control-plane exposure is combined with a networkRef")
+	}
+}
+
+func TestRenderSwiftGuest_NoExposure(t *testing.T) {
+	req, cfg := testRenderRequest(nil, "")
+	g := renderSwiftGuest(req, cfg)
+
+	if _, found, _ := unstructured.NestedMap(g.Object, "spec", "network"); found {
+		t.Fatal("spec.network should be absent without control-plane exposure")
+	}
+	if _, ok := g.GetLabels()[infrav1.ControlPlanePoolLabelKey]; ok {
+		t.Fatal("pool label should be absent without control-plane exposure")
+	}
+}

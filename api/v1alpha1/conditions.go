@@ -15,6 +15,9 @@ const (
 	WaitingForControlPlaneEndpointReason = "WaitingForControlPlaneEndpoint"
 	// ClusterProvisionedReason: cluster infrastructure is ready.
 	ClusterProvisionedReason = "Provisioned"
+	// WaitingForEndpointServiceReason: endpoint.mode=Service and the provider-minted
+	// Service has no address yet (e.g. a LoadBalancer IP is still being assigned).
+	WaitingForEndpointServiceReason = "WaitingForEndpointService"
 
 	// WaitingForClusterInfrastructureReason: the owning Cluster's infrastructure is
 	// not ready yet.

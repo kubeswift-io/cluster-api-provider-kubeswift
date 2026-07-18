@@ -1,0 +1,146 @@
+# A workload cluster whose control-plane endpoint is provisioned by this provider as a
+# Kubernetes Service (endpoint.mode=Service) — CNI-agnostic, no OVN and no external load
+# balancer required. The provider mints a ClusterIP Service fronting the control-plane
+# guests on 6443 and writes it to spec.controlPlaneEndpoint before the first node boots.
+#
+# Use this on a management cluster with a plain CNI (e.g. Calico). Because the endpoint is
+# a ClusterIP, the workload cluster is reachable from the management cluster (CAPI
+# controllers + worker VMs) — enough to form and be managed. For operator kubectl access
+# from outside, set endpoint.service.type: LoadBalancer instead (needs MetalLB / a cloud
+# LB / an OVN LB).
+#
+# Prerequisites on the MANAGEMENT cluster:
+#   - Cluster API v1.13+ (clusterctl init) + the Kubeadm bootstrap/control-plane providers.
+#   - cert-manager (for the provider webhook); KubeSwift installed; this provider deployed.
+#   - A cluster-scoped SwiftGuestClass and a Ready SwiftImage (see capi-quickstart.yaml).
+#
+# Replace ${...} placeholders and apply into a namespace where KubeSwift can create guests.
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  name: ks-svc
+  namespace: default
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks: ["192.168.0.0/16"]
+    services:
+      cidrBlocks: ["10.128.0.0/12"]
+  controlPlaneRef:
+    apiGroup: controlplane.cluster.x-k8s.io
+    kind: KubeadmControlPlane
+    name: ks-svc-cp
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: KubeSwiftCluster
+    name: ks-svc
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: KubeSwiftCluster
+metadata:
+  name: ks-svc
+  namespace: default
+spec:
+  # No controlPlaneEndpoint here: the provider provisions it via a Service.
+  endpoint:
+    mode: Service
+    service:
+      type: ClusterIP   # LoadBalancer for external kubectl access
+      port: 6443
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+kind: KubeadmControlPlane
+metadata:
+  name: ks-svc-cp
+  namespace: default
+spec:
+  replicas: 1
+  version: v1.34.0
+  machineTemplate:
+    spec:
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: KubeSwiftMachineTemplate
+        name: ks-svc-cp
+  kubeadmConfigSpec:
+    initConfiguration:
+      nodeRegistration:
+        # KubeSwift is agnostic to providerID; the provider injects the matching value
+        # via the bootstrap data, so no in-guest cloud-provider is required.
+        kubeletExtraArgs:
+          - name: cloud-provider
+            value: external
+    joinConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+          - name: cloud-provider
+            value: external
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: KubeSwiftMachineTemplate
+metadata:
+  name: ks-svc-cp
+  namespace: default
+spec:
+  template:
+    spec:
+      backend:
+        type: SwiftGuest
+        swiftGuest:
+          imageRef: ubuntu-noble
+          guestClassRef: capi-controlplane
+          # Do NOT set networkRef on control-plane machines in Service mode: the API
+          # server is exposed over the pod network (nat binding).
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineDeployment
+metadata:
+  name: ks-svc-md
+  namespace: default
+spec:
+  clusterName: ks-svc
+  replicas: 2
+  selector:
+    matchLabels: {}
+  template:
+    spec:
+      clusterName: ks-svc
+      version: v1.34.0
+      bootstrap:
+        configRef:
+          apiGroup: bootstrap.cluster.x-k8s.io
+          kind: KubeadmConfigTemplate
+          name: ks-svc-md
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: KubeSwiftMachineTemplate
+        name: ks-svc-md
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: KubeSwiftMachineTemplate
+metadata:
+  name: ks-svc-md
+  namespace: default
+spec:
+  template:
+    spec:
+      backend:
+        type: SwiftGuest
+        swiftGuest:
+          imageRef: ubuntu-noble
+          guestClassRef: capi-worker
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfigTemplate
+metadata:
+  name: ks-svc-md
+  namespace: default
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            - name: cloud-provider
+              value: external

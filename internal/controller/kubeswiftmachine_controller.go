@@ -24,7 +24,12 @@ import (
 	"github.com/kubeswift-io/cluster-api-provider-kubeswift/internal/backend"
 )
 
-const machineRequeueAfter = 15 * time.Second
+const (
+	machineRequeueAfter = 15 * time.Second
+	// defaultAPIServerPort is the control-plane API-server port used when the endpoint
+	// Service config does not override it.
+	defaultAPIServerPort = 6443
+)
 
 // KubeSwiftMachineReconciler reconciles a KubeSwiftMachine object.
 type KubeSwiftMachineReconciler struct {
@@ -35,6 +40,7 @@ type KubeSwiftMachineReconciler struct {
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=kubeswiftmachines,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=kubeswiftmachines/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=kubeswiftmachines/finalizers,verbs=update
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=kubeswiftclusters,verbs=get;list;watch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines;machines/status,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=swift.kubeswift.io,resources=swiftguests,verbs=get;list;watch;create;update;patch;delete
@@ -120,13 +126,19 @@ func (r *KubeSwiftMachineReconciler) reconcileNormal(
 	guestNamespace := ksm.Namespace
 	providerID := fmt.Sprintf("%s://%s/%s", infrav1.ProviderIDScheme, guestNamespace, ksm.Name)
 
+	exposure, err := r.controlPlaneExposure(ctx, machine, cluster)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
 	result, err := b.Reconcile(ctx, backend.Request{
-		Machine:        ksm,
-		Cluster:        cluster,
-		CAPIMachine:    machine,
-		BootstrapData:  bootstrapData,
-		GuestNamespace: guestNamespace,
-		ProviderID:     providerID,
+		Machine:              ksm,
+		Cluster:              cluster,
+		CAPIMachine:          machine,
+		BootstrapData:        bootstrapData,
+		GuestNamespace:       guestNamespace,
+		ProviderID:           providerID,
+		ControlPlaneExposure: exposure,
 	})
 	if err != nil {
 		notReady(ksm, infrav1.VMFailedReason, err.Error())
@@ -182,6 +194,34 @@ func (r *KubeSwiftMachineReconciler) bootstrapData(ctx context.Context, machine 
 		return nil, fmt.Errorf("bootstrap data secret %s has no 'value' key", key)
 	}
 	return data, nil
+}
+
+// controlPlaneExposure returns the API-server exposure to hand the backend for a
+// control-plane machine whose cluster uses Service-backed endpoint provisioning
+// (endpoint.mode=Service); nil for workers, other modes, or an unset endpoint block.
+func (r *KubeSwiftMachineReconciler) controlPlaneExposure(
+	ctx context.Context, machine *clusterv1.Machine, cluster *clusterv1.Cluster,
+) (*backend.ControlPlaneExposure, error) {
+	if !util.IsControlPlaneMachine(machine) || cluster.Spec.InfrastructureRef.Name == "" {
+		return nil, nil
+	}
+	ksc := &infrav1.KubeSwiftCluster{}
+	key := types.NamespacedName{Namespace: cluster.Namespace, Name: cluster.Spec.InfrastructureRef.Name}
+	if err := r.Get(ctx, key, ksc); err != nil {
+		return nil, fmt.Errorf("reading KubeSwiftCluster %s: %w", key, err)
+	}
+	ep := ksc.Spec.Endpoint
+	if ep == nil || ep.Mode != infrav1.EndpointModeService {
+		return nil, nil
+	}
+	port := int32(defaultAPIServerPort)
+	if ep.Service != nil && ep.Service.Port != 0 {
+		port = ep.Service.Port
+	}
+	return &backend.ControlPlaneExposure{
+		PoolLabel: infrav1.ControlPlaneServiceSelectorValue(cluster.Name),
+		Port:      port,
+	}, nil
 }
 
 func notReady(ksm *infrav1.KubeSwiftMachine, reason, message string) {
