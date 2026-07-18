@@ -104,14 +104,34 @@ VIP (MetalLB L2, ARP-mode floating VIPs). Options:
 - **Not** an in-tenant `kube-vip`/MetalLB (ARP dropped by OVN port-security; and Hetzner
   has no L2). Ruled out.
 
-**Validated on ntx (2026-07-18):** a pod on the primary UDN is **dual-homed** — it holds
-both the default-network IP (`10.244.x`) and the UDN IP (`10.200.x`) — and reached the
-node-network apiserver (`172.16.56.191:6443`, `HTTP 200`). So UDN workers are **not**
-isolation-blocked from the node network / a management LoadBalancer: worker→endpoint
-reachability is favorable. Open item: confirm whether a management Service resolves to
-the CP guest's apiserver (which listens on the UDN IP) — inspect a real Model A guest;
-the CP endpoint is likely the CP's UDN IP (workers reach it on-UDN), leaving only the
-Cluster API "endpoint before boot" ordering to handle (a management VIP or a pinned IP).
+**Validated on ntx (2026-07-18) — the primary-UDN endpoint is the hard part.** A real
+Model A guest gets its node IP from the **UDN** (`10.200.0.20`), and the launcher pod is
+dual-homed but its **default interface is `role: infrastructure-locked`** (KubeSwift-only;
+the guest is not reachable there). Decisive reachability test to the guest's UDN IP `:22`:
+
+| From | Result |
+|---|---|
+| a **UDN-namespace** pod (workers' path) | **REACHED** |
+| a **default-network** pod (CAPI core + provider path) | **BLOCKED** |
+
+So the CP guest's apiserver (on the UDN) is reachable by workers but **isolated from the
+management controllers**. A plain management Service/LoadBalancer selecting the launcher
+pod resolves to its *infrastructure-locked default IP* and does **not** reach the guest.
+Consequences for the primary-UDN path:
+
+- **The endpoint needs a bridge** — a small **dual-homed proxy** deployed in the guest's
+  UDN namespace (a normal pod there holds both networks) that forwards `:6443` from its
+  default IP to the CP guest's UDN IP, fronted by a management Service / MetalLB LB. That
+  is a real per-cluster component (a management-cluster LoadBalancer proxy).
+
+**Alternative that avoids both hard parts — nat default + *secondary* UDN.** Keep the
+guest `nat`-bound on the default network (apiserver reachable at the pod IP via the
+existing in-pod DNAT → management controllers reach it, no proxy) **and** attach a
+*secondary* UDN via `networkRef` for a routable second interface. Set the node's
+`--node-ip` to that secondary-UDN IP (it is a *local* interface IP, so kubelet accepts it —
+no CCM), discovered at boot. This pairs the easy endpoint (nat DNAT) with the easy datapath
+(routable UDN). Cost: a provider change to allow `networkRef` *together with* the nat
+endpoint (today they are mutually exclusive), and a boot-time node-ip step.
 
 ## Plan
 
