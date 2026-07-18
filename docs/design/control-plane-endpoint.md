@@ -18,7 +18,7 @@ This provider offers three modes so operators are not forced onto OVN.
 |---|---|---|---|
 | `External` (default) | Operator sets `spec.controlPlaneEndpoint` (external LB, kube-vip in-guest, DNS). Provider provisions nothing. | Wherever the operator's VIP is | No (manual) |
 | `Service` | Provider mints one Kubernetes Service fronting the control-plane guests on the API-server port and adopts its address as the endpoint. | ClusterIP: mgmt cluster (CAPI controllers + worker VMs). LoadBalancer: also external. | **No** |
-| `RoutableIP` | Provider uses the control-plane guest's cluster-routable IP / an OVN LoadBalancer. | Cluster-wide (and external if the UDN is routed) | Yes — planned, see below |
+| _routable / OVN_ | Not a separate mode — use `Service` with `type: LoadBalancer`; the VIP (MetalLB / an OVN LB) is externally routable. See "Routable endpoint on OVN" below. | External (routable VIP) | needs an LB (MetalLB / OVN) |
 
 ## Mode: Service — the CNI-agnostic path
 
@@ -80,14 +80,28 @@ load balancer, `kube-vip` static pod delivered via the bootstrap config, DNS) an
 `spec.controlPlaneEndpoint`. The controller reports the cluster provisioned once it is
 set. CNI-agnostic, but manual.
 
-## Mode: RoutableIP — planned
+## Routable endpoint on OVN
 
-On OVN-Kubernetes, guests get cluster-routable IPs, so the endpoint can be the
-control-plane guest's own IP (single control plane) or an OVN LoadBalancer VIP across
-control-plane guests (HA), with no DNAT hop. It needs OVN's persistent-IP (IPAMClaim)
-to reserve the address before the guest boots (the same chicken-and-egg), so it is
-implemented and validated separately against an OVN-Kubernetes cluster. Until then the
-`Service` mode with `type: LoadBalancer` covers the routable/external case on any CNI.
+There is **no separate `RoutableIP` mode**, and no "endpoint = the control-plane
+guest's own routable IP" mode, because KubeSwift cannot pre-reserve a routable IP
+before the guest boots: a `SwiftGuest` interface has no IP field, and the OVN-K
+`IPAMClaim` KubeSwift creates carries no requested IP (it persists whatever OVN
+assigns — good for migration, but not operator-chosen). The routable IP is only known
+*after* the pod attaches, which is too late for kubeadm (it needs the endpoint up
+front). A guest-own-IP mode would require a KubeSwift core change (an IP-request field
++ a static IP on the IPAMClaim + OVN-K wiring).
+
+Instead, the routable/external endpoint on OVN — or on any cluster — is `mode: Service`
+with `type: LoadBalancer`: the VIP is assigned at Service creation (no chicken-and-egg),
+externally routable, and the provider adopts it exactly like a ClusterIP. KubeSwift
+mints a plain selector Service (no built-in OVN LB), so the VIP comes from an external
+load-balancer controller — **MetalLB** on bare metal (or Cilium/Tailscale).
+
+Validated on the ntx cluster (OVN-Kubernetes primary CNI + MetalLB): a `mode: Service`
+/ `type: LoadBalancer` `KubeSwiftCluster` got the routable VIP `172.16.56.27` from
+MetalLB, the provider adopted it as `spec.controlPlaneEndpoint`, core CAPI surfaced it
+onto the `Cluster` (`Provisioned`), and the control-plane guest was rendered with the
+pool label + `nat` 6443 exposure and selected by the Service.
 
 ## API
 
@@ -116,6 +130,8 @@ spec:
 
 ## Status
 
-`Service` (ClusterIP + LoadBalancer) and `External` are implemented and unit-tested;
-end-to-end node-join validation runs on the dev cluster (Calico). `RoutableIP` is
-pending an OVN-Kubernetes cluster.
+`External` and `Service` (ClusterIP + LoadBalancer) are implemented and unit-tested.
+The mechanism is cluster-validated: `Service`/ClusterIP on dev (Calico, no OVN) and
+`Service`/LoadBalancer on ntx (OVN-Kubernetes + MetalLB, routable VIP). End-to-end
+node-join (a joined, Ready Node behind the endpoint) additionally needs a
+Kubernetes-preinstalled guest image.
