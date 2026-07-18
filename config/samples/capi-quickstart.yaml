@@ -51,10 +51,11 @@ spec:
   replicas: 1
   version: v1.34.0
   machineTemplate:
-    infrastructureRef:
-      apiGroup: infrastructure.cluster.x-k8s.io
-      kind: KubeSwiftMachineTemplate
-      name: ks-quickstart-cp
+    spec:
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: KubeSwiftMachineTemplate
+        name: ks-quickstart-cp
   kubeadmConfigSpec:
     initConfiguration:
       nodeRegistration:

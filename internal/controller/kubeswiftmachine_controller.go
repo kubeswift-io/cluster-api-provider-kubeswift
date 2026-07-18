@@ -18,6 +18,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	infrav1 "github.com/kubeswift-io/cluster-api-provider-kubeswift/api/v1alpha1"
@@ -207,6 +208,12 @@ func backendFor(t infrav1.MachineBackendType, c client.Client) (backend.Backend,
 func (r *KubeSwiftMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&infrav1.KubeSwiftMachine{}).
+		Watches(
+			&clusterv1.Machine{},
+			handler.EnqueueRequestsFromMapFunc(
+				util.MachineToInfrastructureMapFunc(infrav1.GroupVersion.WithKind("KubeSwiftMachine")),
+			),
+		).
 		Named("kubeswiftmachine").
 		Complete(r)
 }
