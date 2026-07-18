@@ -17,12 +17,29 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reports provisioned once a control-plane endpoint is set; the machine gates on
   cluster-infrastructure-ready + the bootstrap secret, creates a SwiftGuest +
   SwiftSeedProfile via the unstructured client (an internal `Backend` seam; SwiftGuest
-  today), injects the kubelet provider-id into the bootstrap cloud-init, and surfaces
-  `providerID` / `addresses` / `status.initialization.provisioned`.
+  today) applying the bootstrap data verbatim, and surfaces `addresses` /
+  `status.initialization.provisioned`.
+- **Node providerID**: the machine controller sets each workload Node's `spec.providerID`
+  by patching the Node through the cluster's kubeconfig (kubelet `--provider-id` is
+  unreliable), the same pattern CAPD uses. The provider must run in the management
+  cluster to reach the workload endpoint.
+- **Control-plane endpoint modes** (`KubeSwiftCluster.spec.endpoint.mode`): `External`
+  (operator supplies the endpoint) and `Service` — the provider mints a Service
+  selecting the control-plane pool, so the endpoint (ClusterIP, or LoadBalancer via
+  `service.type`) exists before kubeadm runs and no OVN or operator VIP is required.
+  Validated end-to-end (a full workload cluster to CoreDNS-Ready) on Calico.
 - **ClusterClass support**: a `KubeSwiftMachineTemplate` validating webhook enforcing
   `spec.template.spec` immutability with a topology dry-run carve-out
   (`topology.IsDryRunRequest`), plus sample manifests
-  (`config/samples/capi-quickstart.yaml`, `config/samples/clusterclass.yaml`).
+  (`config/samples/capi-quickstart.yaml`, `config/samples/capi-service-endpoint.yaml`,
+  `config/samples/clusterclass.yaml`).
+- **clusterctl packaging**: `metadata.yaml` (releaseSeries 0.1 → contract v1beta2), a
+  `templates/cluster-template.yaml` for `clusterctl generate cluster` (mode `Service`,
+  non-overlapping CIDRs), `clusterctl-settings.json`, and a tag-triggered release
+  workflow that builds the manager image and publishes the `infrastructure-components.yaml`
+  + `metadata.yaml` + template as release assets. `config/default` now wires cert-manager
+  to issue the webhook serving cert and inject its CA into the webhook configuration, so
+  `make deploy` / the components manifest stand up the webhook without manual certs.
 - Apache-2.0 license. Design and spike docs (`docs/design/`, `docs/spikes/`) are
   tracked in-repo; AI tooling (`.claude/`, `CLAUDE.md`, `.devcontainer/`) is
   gitignored and kept local (matching the KubeSwift core repo).
@@ -41,5 +58,8 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   v0.35 (Kubernetes 1.35).
 
 ### Notes
-- Controllers are stubs. The provider does not yet reconcile machines into VMs.
+- Alpha. A single-node control plane can hit a CNI service-hairpin (a pod on the CP
+  node reaching the apiserver through the workload Service ClusterIP) that leaves
+  CoreDNS pending; prefer a multi-node control plane, or set `KUBERNETES_SERVICE_HOST`
+  to the node IP on the affected pods. Follow-up: an operator note.
 - Go file license headers are not yet applied (follow-up).

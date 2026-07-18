@@ -1,7 +1,8 @@
 resources:
 - issuer.yaml
 - certificate-webhook.yaml
-- certificate-metrics.yaml
+# certificate-metrics.yaml is omitted: metrics-with-certs is not enabled, and its
+# SERVICE_NAME/SERVICE_NAMESPACE placeholders would be left unsubstituted.
 
 configurations:
 - kustomizeconfig.yaml

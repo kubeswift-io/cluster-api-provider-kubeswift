@@ -30,3 +30,7 @@ go.work
 .claude/
 CLAUDE.md
 .devcontainer/
+
+# Generated release artifacts (produced by `make build-installer` / the release workflow)
+dist/
+infrastructure-components.yaml
