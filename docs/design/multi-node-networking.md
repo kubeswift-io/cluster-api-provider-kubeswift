@@ -77,9 +77,14 @@ UDN datapath.
 - **ntx (OVN):** the OVN primary UDN (`udn-primary/udn-net`, `10.200.0.0/16`, `layer2`,
   `role: primary`) already gives guests unique routable IPs cross-node.
 
-Pros: proven datapath; simplest provider logic (`networkRef` already supported). Cons:
-needs the L2 substrate stood up (trivial on ntx — the UDN exists; a one-time mesh setup
-on dev).
+**Validated on ntx (2026-07-18):** a guest on a *primary* UDN needs **no** provider
+datapath change — a plain SwiftGuest created **in the primary-UDN namespace** attaches
+automatically (KubeSwift auto-detects the primary UDN; no `networkRef`/`binding`), and
+holds a routable UDN IP reachable cross-node from that namespace. So the provider just
+creates plain guests in that namespace under `mode: External`.
+
+Pros: proven datapath; **zero** provider datapath logic on a primary UDN. Cons: needs
+the L2 substrate stood up (trivial on ntx — the UDN exists; a one-time mesh setup on dev).
 
 ## Endpoint models
 
@@ -98,6 +103,15 @@ VIP (MetalLB L2, ARP-mode floating VIPs). Options:
   this needs a management-cluster VIP or a per-guest static IP the runtime cannot yet pin.
 - **Not** an in-tenant `kube-vip`/MetalLB (ARP dropped by OVN port-security; and Hetzner
   has no L2). Ruled out.
+
+**Validated on ntx (2026-07-18):** a pod on the primary UDN is **dual-homed** — it holds
+both the default-network IP (`10.244.x`) and the UDN IP (`10.200.x`) — and reached the
+node-network apiserver (`172.16.56.191:6443`, `HTTP 200`). So UDN workers are **not**
+isolation-blocked from the node network / a management LoadBalancer: worker→endpoint
+reachability is favorable. Open item: confirm whether a management Service resolves to
+the CP guest's apiserver (which listens on the UDN IP) — inspect a real Model A guest;
+the CP endpoint is likely the CP's UDN IP (workers reach it on-UDN), leaving only the
+Cluster API "endpoint before boot" ordering to handle (a management VIP or a pinned IP).
 
 ## Plan
 
