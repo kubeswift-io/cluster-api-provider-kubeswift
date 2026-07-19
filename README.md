@@ -6,11 +6,6 @@ virtual machines. Core Cluster API and this provider run on a management cluster
 that has KubeSwift installed; each `Machine` is reconciled into a `SwiftGuest` VM,
 the same way the Docker provider (CAPD) backs machines with containers.
 
-> Status: **alpha.** Works end-to-end: a `Cluster` (plain or ClusterClass topology)
-> reconciles into KubeSwift VMs, the nodes join, and the provider provisions the
-> control-plane endpoint — including mode `Service`, which needs no OVN or operator
-> VIP. The `v1alpha1` API may still change.
-
 ## Custom Resources
 
 | CRD | Cluster API role | Backs |
