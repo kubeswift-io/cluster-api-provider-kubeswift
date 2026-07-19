@@ -166,12 +166,35 @@ func renderSwiftGuest(req Request, cfg *infrav1.SwiftGuestBackend) *unstructured
 		"guestClassRef":  localRef(cfg.GuestClassRef),
 		"seedProfileRef": localRef(seedName(req.Machine.Name)),
 	}
-	if cfg.NetworkRef != "" {
+	switch {
+	case cfg.NetworkRef != "":
+		// The named network is the guest's PRIMARY interface.
 		spec["interfaces"] = []interface{}{
 			map[string]interface{}{
 				nameField:    "primary",
 				"networkRef": localRef(cfg.NetworkRef),
 			},
+		}
+	case cfg.NodeNetworkRef != "":
+		// Multi-node: a node-local nat primary (management + the reachable control-plane
+		// endpoint) plus a secondary routable interface carrying the node datapath
+		// (apiserver<->kubelet + pod overlay). The bootstrap sets kubelet --node-ip to
+		// the secondary interface's address.
+		spec["interfaces"] = []interface{}{
+			map[string]interface{}{nameField: "mgmt", "primary": true},
+			map[string]interface{}{nameField: "node", "networkRef": localRef(cfg.NodeNetworkRef)},
+		}
+	}
+	if cfg.StorageClassName != "" {
+		// Override the root-disk StorageClass (else KubeSwift inherits the source
+		// SwiftImage's class). Lets a machine pin, e.g., a lower-replica class on a
+		// cluster whose storage cannot hold the image class's replica count.
+		// accessMode is set explicitly because SwiftGuest's validation requires it
+		// present whenever spec.storage is set; ReadWriteOnce is the default and the
+		// right mode for a CAPI node's root disk (workers are not live-migrated).
+		spec["storage"] = map[string]interface{}{
+			"storageClassName": cfg.StorageClassName,
+			"accessMode":       "ReadWriteOnce",
 		}
 	}
 	if req.ControlPlaneExposure != nil {
@@ -180,7 +203,7 @@ func renderSwiftGuest(req Request, cfg *infrav1.SwiftGuestBackend) *unstructured
 		// control-plane guests). See docs/design/control-plane-endpoint.md.
 		port := int64(req.ControlPlaneExposure.Port)
 		spec["network"] = map[string]interface{}{
-			"binding": "nat",
+			"binding": natBinding,
 			"ports": []interface{}{
 				map[string]interface{}{
 					nameField:    infrav1.APIServerPortName,
@@ -206,6 +229,10 @@ func renderSwiftGuest(req Request, cfg *infrav1.SwiftGuestBackend) *unstructured
 
 // nameField is the "name" key used throughout the unstructured SwiftGuest spec.
 const nameField = "name"
+
+// natBinding is the SwiftGuest network binding for a node-local (pod-network) NIC —
+// the primary interface under Service-backed endpoint provisioning.
+const natBinding = "nat"
 
 // localRef renders a corev1.LocalObjectReference as an unstructured map (KubeSwift
 // imageRef/guestClassRef/seedProfileRef are LocalObjectReferences — name only).
