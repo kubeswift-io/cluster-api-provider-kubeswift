@@ -4,6 +4,15 @@ namespace: cluster-api-provider-kubeswift-system
 # Value of this field is prepended to the names of all resources.
 namePrefix: cluster-api-provider-kubeswift-
 
+# The clusterctl provider label. clusterctl uses it to identify and manage every
+# object belonging to this provider (install, upgrade, delete, and move/pivot).
+# includeSelectors:false so it is added to resource metadata only and never mutates
+# the immutable Deployment/Service selectors.
+labels:
+- includeSelectors: false
+  pairs:
+    cluster.x-k8s.io/provider: infrastructure-kubeswift
+
 resources:
 - ../crd
 - ../rbac
