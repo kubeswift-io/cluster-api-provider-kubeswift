@@ -29,7 +29,7 @@ func TestRenderSwiftGuest_ControlPlaneExposure(t *testing.T) {
 	if got := g.GetLabels()[infrav1.ControlPlanePoolLabelKey]; got != "demo-cp" {
 		t.Fatalf("pool label = %q, want demo-cp", got)
 	}
-	if binding, _, _ := unstructured.NestedString(g.Object, "spec", "network", "binding"); binding != "nat" {
+	if binding, _, _ := unstructured.NestedString(g.Object, "spec", "network", "binding"); binding != natBinding {
 		t.Fatalf("network.binding = %q, want nat", binding)
 	}
 	ports, _, _ := unstructured.NestedSlice(g.Object, "spec", "network", "ports")
@@ -101,7 +101,7 @@ func TestRenderSwiftGuest_NodeNetworkRef(t *testing.T) {
 		t.Fatalf("secondary interface networkRef = %v, want sec-net", ref["name"])
 	}
 	// The nat endpoint still applies (node-network is a secondary, not the primary).
-	if binding, _, _ := unstructured.NestedString(g.Object, "spec", "network", "binding"); binding != "nat" {
+	if binding, _, _ := unstructured.NestedString(g.Object, "spec", "network", "binding"); binding != natBinding {
 		t.Fatalf("network.binding = %q, want nat (endpoint coexists with the node network)", binding)
 	}
 }

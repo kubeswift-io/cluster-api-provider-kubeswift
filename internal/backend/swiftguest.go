@@ -203,7 +203,7 @@ func renderSwiftGuest(req Request, cfg *infrav1.SwiftGuestBackend) *unstructured
 		// control-plane guests). See docs/design/control-plane-endpoint.md.
 		port := int64(req.ControlPlaneExposure.Port)
 		spec["network"] = map[string]interface{}{
-			"binding": "nat",
+			"binding": natBinding,
 			"ports": []interface{}{
 				map[string]interface{}{
 					nameField:    infrav1.APIServerPortName,
@@ -229,6 +229,10 @@ func renderSwiftGuest(req Request, cfg *infrav1.SwiftGuestBackend) *unstructured
 
 // nameField is the "name" key used throughout the unstructured SwiftGuest spec.
 const nameField = "name"
+
+// natBinding is the SwiftGuest network binding for a node-local (pod-network) NIC —
+// the primary interface under Service-backed endpoint provisioning.
+const natBinding = "nat"
 
 // localRef renders a corev1.LocalObjectReference as an unstructured map (KubeSwift
 // imageRef/guestClassRef/seedProfileRef are LocalObjectReferences — name only).
