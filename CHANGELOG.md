@@ -4,7 +4,10 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v0.1.0] — 2026-07-19
+
+First release: an alpha Cluster API infrastructure provider that backs `Machine`s
+with KubeSwift `SwiftGuest` VMs. Installable via `clusterctl`.
 
 ### Added
 - Repository scaffold for the Cluster API infrastructure provider (kubebuilder).
@@ -33,6 +36,17 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`topology.IsDryRunRequest`), plus sample manifests
   (`config/samples/capi-quickstart.yaml`, `config/samples/capi-service-endpoint.yaml`,
   `config/samples/clusterclass.yaml`).
+- **Multi-node workload networking** (`backend.swiftGuest.nodeNetworkRef`): attaches a
+  secondary routable interface (an OVN-Kubernetes secondary UDN, or a bridge / VXLAN-mesh
+  NAD) that carries the node datapath — apiserver↔kubelet + the pod overlay — with unique
+  cross-node-routable IPs, while the primary interface stays node-local NAT so the
+  Service-backed control-plane endpoint remains reachable from the management cluster. The
+  node's kubelet `--node-ip` and the apiserver `--advertise-address` are pointed at that
+  interface (a bootstrap step; see `docs/design/multi-node-networking.md`). Validated
+  end-to-end as 2-node clusters on OVN-Kubernetes and on Calico VXLAN.
+- **Root-disk StorageClass override** (`backend.swiftGuest.storageClassName`): pins the
+  SwiftGuest root-disk StorageClass (otherwise inherited from the source image), e.g. to
+  fit a lower-replica class on constrained storage.
 - **clusterctl packaging**: `metadata.yaml` (releaseSeries 0.1 → contract v1beta2), a
   `templates/cluster-template.yaml` for `clusterctl generate cluster` (mode `Service`,
   non-overlapping CIDRs), `clusterctl-settings.json`, and a tag-triggered release
