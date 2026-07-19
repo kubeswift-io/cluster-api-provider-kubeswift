@@ -54,8 +54,8 @@ with KubeSwift `SwiftGuest` VMs. Installable via `clusterctl`.
   + `metadata.yaml` + template as release assets. `config/default` now wires cert-manager
   to issue the webhook serving cert and inject its CA into the webhook configuration, so
   `make deploy` / the components manifest stand up the webhook without manual certs.
-- Apache-2.0 license. Design and spike docs (`docs/design/`, `docs/spikes/`) are
-  tracked in-repo; AI tooling (`.claude/`, `CLAUDE.md`, `.devcontainer/`) is
+- Apache-2.0 license. Design docs (`docs/design/`) are tracked in-repo; spike docs
+  (`docs/spikes/`) and AI tooling (`.claude/`, `CLAUDE.md`, `.devcontainer/`) are
   gitignored and kept local (matching the KubeSwift core repo).
 - CI: golangci-lint v2 (v1.63.4 cannot lint on `go 1.25`); the scaffolded Kind e2e
   workflow is manual-only until a real Cluster API + KubeSwift e2e harness exists.

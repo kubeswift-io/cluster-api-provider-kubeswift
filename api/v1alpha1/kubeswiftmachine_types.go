@@ -12,8 +12,8 @@ type MachineBackendType string
 const (
 	// SwiftGuestBackendType backs the machine with a full SwiftGuest VM (disk boot,
 	// cloud-init, routable IP, persistent disk) — the only KubeSwift substrate that
-	// can be a persistent Kubernetes node. See docs/spikes/01-sandbox-as-capi-node.md
-	// for why SwiftSandbox / SwiftSandboxPool are not valid node backends.
+	// can be a persistent Kubernetes node. SwiftSandbox / SwiftSandboxPool are not
+	// valid node backends (ephemeral rootfs + tmpfs overlay, no cloud-init).
 	SwiftGuestBackendType MachineBackendType = "SwiftGuest"
 )
 

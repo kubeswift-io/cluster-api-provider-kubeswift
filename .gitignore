@@ -31,6 +31,9 @@ go.work
 CLAUDE.md
 .devcontainer/
 
+# Spike / exploration docs (kept local, not committed)
+docs/spikes/
+
 # Generated release artifacts (produced by `make build-installer` / the release workflow)
 dist/
 infrastructure-components.yaml
