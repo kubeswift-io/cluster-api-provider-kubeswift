@@ -1,8 +1,8 @@
 // Package backend abstracts the KubeSwift resource that backs a KubeSwiftMachine.
 //
-// A KubeSwiftMachine's spec.backend selects a backend (today only SwiftGuest — see
-// docs/spikes/01-sandbox-as-capi-node.md for why SwiftSandbox/SwiftSandboxPool are not
-// node backends). Each backend creates, reconciles, and deletes its KubeSwift resource
+// A KubeSwiftMachine's spec.backend selects a backend (today only SwiftGuest;
+// SwiftSandbox/SwiftSandboxPool are not node backends, ephemeral rootfs + no
+// cloud-init). Each backend creates, reconciles, and deletes its KubeSwift resource
 // through the Kubernetes API — never by importing KubeSwift's Go packages, so this
 // Apache-2.0 codebase stays clean against KubeSwift's AGPL-3.0 core — and maps the
 // resource's state back onto the one Cluster API contract surface (providerID,
