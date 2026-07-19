@@ -119,6 +119,15 @@ spec:
                                   unlike networkRef (which makes the named network the guest's *primary*), it does
                                   not isolate the apiserver from the management controllers.
                                 type: string
+                              storageClassName:
+                                description: |-
+                                  storageClassName optionally overrides the StorageClass for the VM's root
+                                  disk. Empty inherits the source SwiftImage's class (KubeSwift's default).
+                                  Set this when the image's class does not fit the target cluster -- e.g. to
+                                  pin a 1-replica class on storage that cannot hold the image class's replica
+                                  count, or to place node disks on a specific backend. Applies to the
+                                  controller-created root-disk PVC only.
+                                type: string
                             type: object
                           type:
                             default: SwiftGuest

@@ -105,3 +105,25 @@ func TestRenderSwiftGuest_NodeNetworkRef(t *testing.T) {
 		t.Fatalf("network.binding = %q, want nat (endpoint coexists with the node network)", binding)
 	}
 }
+
+// TestRenderSwiftGuest_StorageClassName verifies the root-disk StorageClass override
+// lands on spec.storage.storageClassName, and that leaving it empty omits the block
+// (so KubeSwift inherits the source SwiftImage's class).
+func TestRenderSwiftGuest_StorageClassName(t *testing.T) {
+	req, cfg := testRenderRequest(nil, "")
+	cfg.StorageClassName = "longhorn-r1"
+	g := renderSwiftGuest(req, cfg)
+	if sc, _, _ := unstructured.NestedString(g.Object, "spec", "storage", "storageClassName"); sc != "longhorn-r1" {
+		t.Fatalf("spec.storage.storageClassName = %q, want longhorn-r1", sc)
+	}
+	// SwiftGuest validation requires accessMode present whenever spec.storage is set.
+	if am, _, _ := unstructured.NestedString(g.Object, "spec", "storage", "accessMode"); am != "ReadWriteOnce" {
+		t.Fatalf("spec.storage.accessMode = %q, want ReadWriteOnce", am)
+	}
+
+	req, cfg = testRenderRequest(nil, "")
+	g = renderSwiftGuest(req, cfg)
+	if _, found, _ := unstructured.NestedMap(g.Object, "spec", "storage"); found {
+		t.Fatal("spec.storage must be omitted when storageClassName is empty (inherit image class)")
+	}
+}

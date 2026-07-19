@@ -77,6 +77,15 @@ type SwiftGuestBackend struct {
 	// not isolate the apiserver from the management controllers.
 	// +optional
 	NodeNetworkRef string `json:"nodeNetworkRef,omitempty"`
+
+	// storageClassName optionally overrides the StorageClass for the VM's root
+	// disk. Empty inherits the source SwiftImage's class (KubeSwift's default).
+	// Set this when the image's class does not fit the target cluster -- e.g. to
+	// pin a 1-replica class on storage that cannot hold the image class's replica
+	// count, or to place node disks on a specific backend. Applies to the
+	// controller-created root-disk PVC only.
+	// +optional
+	StorageClassName string `json:"storageClassName,omitempty"`
 }
 
 // KubeSwiftMachineStatus defines the observed state of KubeSwiftMachine.

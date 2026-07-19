@@ -185,6 +185,18 @@ func renderSwiftGuest(req Request, cfg *infrav1.SwiftGuestBackend) *unstructured
 			map[string]interface{}{nameField: "node", "networkRef": localRef(cfg.NodeNetworkRef)},
 		}
 	}
+	if cfg.StorageClassName != "" {
+		// Override the root-disk StorageClass (else KubeSwift inherits the source
+		// SwiftImage's class). Lets a machine pin, e.g., a lower-replica class on a
+		// cluster whose storage cannot hold the image class's replica count.
+		// accessMode is set explicitly because SwiftGuest's validation requires it
+		// present whenever spec.storage is set; ReadWriteOnce is the default and the
+		// right mode for a CAPI node's root disk (workers are not live-migrated).
+		spec["storage"] = map[string]interface{}{
+			"storageClassName": cfg.StorageClassName,
+			"accessMode":       "ReadWriteOnce",
+		}
+	}
 	if req.ControlPlaneExposure != nil {
 		// Expose the API-server port via KubeSwift's in-pod DNAT (nat binding, no
 		// per-guest "expose" — the KubeSwiftCluster mints one Service selecting all
