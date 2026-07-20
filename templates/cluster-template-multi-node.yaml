@@ -1,0 +1,216 @@
+# clusterctl cluster template — KubeSwift multi-node (nodeNetworkRef).
+# Use: clusterctl generate cluster NAME --infrastructure kubeswift --flavor multi-node \
+#        --kubernetes-version v1.34.0 --control-plane-machine-count 1 --worker-machine-count 2
+#
+# What this adds over the default flavor: every node gets a SECONDARY routable
+# interface (`backend.swiftGuest.nodeNetworkRef`) that carries the node datapath —
+# apiserver<->kubelet plus the pod overlay — while the primary interface stays
+# node-local NAT so the Service-backed control-plane endpoint remains reachable from
+# the management cluster. The bootstrap below then:
+#   1. brings the secondary NIC up over DHCP, taking no default route and no DNS
+#      from it (the primary keeps both),
+#   2. sets kubelet --node-ip to the secondary address, and
+#   3. on control-plane nodes, re-points the apiserver --advertise-address at it.
+# Steps 2 and 3 are the point. The node-local NAT address is the default route, so
+# kubeadm would otherwise advertise it — and it is the SAME address on every node,
+# so a worker pod resolving kubernetes.default would reach its own NAT instead of
+# the control plane.
+#
+# Variables (beyond the default flavor):
+#   KUBESWIFT_CONTROL_PLANE_NETWORK — NetworkAttachmentDefinition for control-plane nodes
+#   KUBESWIFT_WORKER_NETWORK        — NetworkAttachmentDefinition for worker nodes
+# Set both to the SAME NAD when one L2 segment spans every node (e.g. an
+# OVN-Kubernetes secondary UDN). Set them to DIFFERENT NADs when the segment is
+# assembled from per-node single-IP bridge NADs. Neither has a default: a wrong
+# guess here produces a cluster that comes up and then cannot route, so the
+# template makes you name them.
+#
+# Prereqs: same as the default flavor — a Ready SwiftImage whose node image already
+# carries containerd + kubeadm/kubelet/kubectl, cluster-scoped SwiftGuestClasses, and
+# a CNI installed on the workload cluster once its control plane is up. Workload
+# pod/service CIDRs must not overlap the management cluster's or the guest NAT range.
+#
+# Single control-plane note: with replicas=1, pods scheduled ON the control-plane
+# node can hit a service-hairpin reaching the apiserver via the ClusterIP. See
+# docs/operations/single-control-plane-hairpin.md.
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  name: ${CLUSTER_NAME}
+  namespace: ${NAMESPACE}
+spec:
+  clusterNetwork:
+    # Must not overlap the management cluster's pod/service CIDRs or the guest NAT range.
+    pods: { cidrBlocks: ["${POD_CIDR:=172.20.0.0/16}"] }
+    services: { cidrBlocks: ["${SERVICE_CIDR:=172.21.0.0/16}"] }
+  controlPlaneRef:
+    apiGroup: controlplane.cluster.x-k8s.io
+    kind: KubeadmControlPlane
+    name: ${CLUSTER_NAME}-control-plane
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: KubeSwiftCluster
+    name: ${CLUSTER_NAME}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: KubeSwiftCluster
+metadata:
+  name: ${CLUSTER_NAME}
+  namespace: ${NAMESPACE}
+spec:
+  endpoint:
+    mode: Service
+    service: { type: ClusterIP, port: 6443 }
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+kind: KubeadmControlPlane
+metadata:
+  name: ${CLUSTER_NAME}-control-plane
+  namespace: ${NAMESPACE}
+spec:
+  replicas: ${CONTROL_PLANE_MACHINE_COUNT}
+  version: ${KUBERNETES_VERSION}
+  machineTemplate:
+    spec:
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: KubeSwiftMachineTemplate
+        name: ${CLUSTER_NAME}-control-plane
+  kubeadmConfigSpec:
+    # No cloud-provider: the provider sets each Node's providerID by patching it.
+    initConfiguration:
+      nodeRegistration: { criSocket: unix:///run/containerd/containerd.sock }
+    joinConfiguration:
+      nodeRegistration: { criSocket: unix:///run/containerd/containerd.sock }
+    preKubeadmCommands:
+      # Bring up any NIC that has no IPv4 yet (the secondary attached by
+      # nodeNetworkRef). UseRoutes=false / UseDNS=false keep the default route and
+      # resolver on the NAT primary — the secondary is a datapath, not an exit.
+      - |
+        for IF in $$(ls /sys/class/net | grep -E '^(en|eth)'); do
+          if [ "$$(ip -4 -o addr show dev $$IF 2>/dev/null | grep -c inet)" = 0 ]; then
+            ip link set $$IF up
+            printf '[Match]\nName=%s\n[Network]\nDHCP=ipv4\n[DHCPv4]\nUseRoutes=false\nUseDNS=false\n' \
+              "$$IF" > /etc/systemd/network/60-$$IF.network
+          fi
+        done
+        systemctl enable systemd-networkd 2>/dev/null || true
+        systemctl restart systemd-networkd 2>/dev/null || true
+      # The routable node IP is the global IPv4 that is NOT on the default-route
+      # interface (that one is the NAT primary). Wait for its DHCP lease, then pin
+      # kubelet --node-ip to it and stash it for the postKubeadm apiserver patch.
+      - |
+        for i in $$(seq 1 45); do
+          DEFIF=$$(ip -4 route show default | awk '{print $$5; exit}')
+          NIP=$$(ip -4 -o addr show scope global | awk -v d="$$DEFIF" '$$2 != d {print $$4}' \
+                 | cut -d/ -f1 | head -1)
+          [ -n "$$NIP" ] && break
+          sleep 2
+        done
+        if [ -z "$$NIP" ]; then
+          echo "kubeswift: no secondary node IP found; check nodeNetworkRef and its NAD IPAM" >&2
+          exit 1
+        fi
+        echo "KUBELET_EXTRA_ARGS=--node-ip=$$NIP" > /etc/default/kubelet
+        echo "nodeip=$$NIP" > /run/kubeswift-nodeip
+    postKubeadmCommands:
+      # kubeadm defaulted --advertise-address to the NAT primary (the default
+      # route). Re-point it at the routable node IP so the kubernetes.default
+      # endpoint is reachable from other nodes.
+      - |
+        NIP=$$(sed -n 's/^nodeip=//p' /run/kubeswift-nodeip 2>/dev/null | head -1)
+        if [ -n "$$NIP" ] && [ -f /etc/kubernetes/manifests/kube-apiserver.yaml ]; then
+          sed -i "s#--advertise-address=[0-9.]*#--advertise-address=$$NIP#" \
+            /etc/kubernetes/manifests/kube-apiserver.yaml
+        fi
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: KubeSwiftMachineTemplate
+metadata:
+  name: ${CLUSTER_NAME}-control-plane
+  namespace: ${NAMESPACE}
+spec:
+  template:
+    spec:
+      backend:
+        type: SwiftGuest
+        swiftGuest:
+          imageRef: ${KUBESWIFT_IMAGE:=ubuntu-noble}
+          guestClassRef: ${KUBESWIFT_CONTROL_PLANE_CLASS:=capi-controlplane}
+          nodeNetworkRef: ${KUBESWIFT_CONTROL_PLANE_NETWORK}
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineDeployment
+metadata:
+  name: ${CLUSTER_NAME}-md-0
+  namespace: ${NAMESPACE}
+spec:
+  clusterName: ${CLUSTER_NAME}
+  replicas: ${WORKER_MACHINE_COUNT}
+  selector:
+    matchLabels: {}
+  template:
+    spec:
+      clusterName: ${CLUSTER_NAME}
+      version: ${KUBERNETES_VERSION}
+      bootstrap:
+        configRef:
+          apiGroup: bootstrap.cluster.x-k8s.io
+          kind: KubeadmConfigTemplate
+          name: ${CLUSTER_NAME}-md-0
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: KubeSwiftMachineTemplate
+        name: ${CLUSTER_NAME}-md-0
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: KubeSwiftMachineTemplate
+metadata:
+  name: ${CLUSTER_NAME}-md-0
+  namespace: ${NAMESPACE}
+spec:
+  template:
+    spec:
+      backend:
+        type: SwiftGuest
+        swiftGuest:
+          imageRef: ${KUBESWIFT_IMAGE:=ubuntu-noble}
+          guestClassRef: ${KUBESWIFT_WORKER_CLASS:=capi-worker}
+          nodeNetworkRef: ${KUBESWIFT_WORKER_NETWORK}
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfigTemplate
+metadata:
+  name: ${CLUSTER_NAME}-md-0
+  namespace: ${NAMESPACE}
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration: { criSocket: unix:///run/containerd/containerd.sock }
+      preKubeadmCommands:
+        # Same secondary-NIC bring-up as the control plane.
+        - |
+          for IF in $$(ls /sys/class/net | grep -E '^(en|eth)'); do
+            if [ "$$(ip -4 -o addr show dev $$IF 2>/dev/null | grep -c inet)" = 0 ]; then
+              ip link set $$IF up
+              printf '[Match]\nName=%s\n[Network]\nDHCP=ipv4\n[DHCPv4]\nUseRoutes=false\nUseDNS=false\n' \
+                "$$IF" > /etc/systemd/network/60-$$IF.network
+            fi
+          done
+          systemctl enable systemd-networkd 2>/dev/null || true
+          systemctl restart systemd-networkd 2>/dev/null || true
+        # Workers only need --node-ip; there is no apiserver manifest to patch.
+        - |
+          for i in $$(seq 1 45); do
+            DEFIF=$$(ip -4 route show default | awk '{print $$5; exit}')
+            NIP=$$(ip -4 -o addr show scope global | awk -v d="$$DEFIF" '$$2 != d {print $$4}' \
+                   | cut -d/ -f1 | head -1)
+            [ -n "$$NIP" ] && break
+            sleep 2
+          done
+          if [ -z "$$NIP" ]; then
+            echo "kubeswift: no secondary node IP found; check nodeNetworkRef and its NAD IPAM" >&2
+            exit 1
+          fi
+          echo "KUBELET_EXTRA_ARGS=--node-ip=$$NIP" > /etc/default/kubelet

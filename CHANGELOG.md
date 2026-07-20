@@ -4,10 +4,28 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Multi-node cluster template** (`clusterctl generate cluster --flavor multi-node`):
+  sets `backend.swiftGuest.nodeNetworkRef` on both machine templates and ships the
+  bootstrap that makes it work — secondary-NIC DHCP bring-up (taking no default route
+  and no DNS from it), kubelet `--node-ip` pinned to the routable secondary address,
+  and on control-plane nodes the apiserver `--advertise-address` re-pointed at the
+  same address. Previously these were hand-rolled per cluster. The node IP is
+  discovered as the global IPv4 that is *not* on the default-route interface, so the
+  template works for both a shared secondary UDN and per-node bridge NADs. Published
+  as a release asset alongside the default flavor.
+- **Operator note for the single-control-plane service hairpin**
+  (`docs/operations/single-control-plane-hairpin.md`): the symptom, why the hairpin
+  happens, and the three ways out (add a worker and move the pods, bypass the
+  ClusterIP with `KUBERNETES_SERVICE_HOST`, or enable kube-proxy masquerade / CNI
+  hairpin mode).
+
 ## [v0.1.0] — 2026-07-19
 
-First release: an alpha Cluster API infrastructure provider that backs `Machine`s
-with KubeSwift `SwiftGuest` VMs. Installable via `clusterctl`.
+First release: a Cluster API infrastructure provider that backs `Machine`s with
+KubeSwift `SwiftGuest` VMs. Installable via `clusterctl`.
 
 ### Added
 - Repository scaffold for the Cluster API infrastructure provider (kubebuilder).
@@ -72,8 +90,9 @@ with KubeSwift `SwiftGuest` VMs. Installable via `clusterctl`.
   v0.35 (Kubernetes 1.35).
 
 ### Notes
-- Alpha. A single-node control plane can hit a CNI service-hairpin (a pod on the CP
-  node reaching the apiserver through the workload Service ClusterIP) that leaves
-  CoreDNS pending; prefer a multi-node control plane, or set `KUBERNETES_SERVICE_HOST`
-  to the node IP on the affected pods. Follow-up: an operator note.
+- A single-node control plane can hit a CNI service-hairpin (a pod on the CP node
+  reaching the apiserver through the workload Service ClusterIP) that leaves CoreDNS
+  pending; prefer a multi-node control plane, or set `KUBERNETES_SERVICE_HOST` to the
+  node IP on the affected pods. Written up in
+  `docs/operations/single-control-plane-hairpin.md`.
 - Go file license headers are not yet applied (follow-up).

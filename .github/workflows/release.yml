@@ -1,8 +1,9 @@
 name: Release
 
 # On a vX.Y.Z tag: build+push the manager image, then publish a draft GitHub release
-# carrying the three assets clusterctl consumes — metadata.yaml,
-# infrastructure-components.yaml, and the cluster template.
+# carrying the assets clusterctl consumes — metadata.yaml,
+# infrastructure-components.yaml, and the cluster templates (the default flavor
+# plus cluster-template-multi-node.yaml, fetched by `--flavor multi-node`).
 on:
   push:
     tags:
@@ -53,3 +54,4 @@ jobs:
             metadata.yaml
             infrastructure-components.yaml
             templates/cluster-template.yaml
+            templates/cluster-template-multi-node.yaml

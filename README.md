@@ -65,6 +65,32 @@ Prerequisites on the management cluster: KubeSwift, cert-manager, a Ready `Swift
 control plane is up. Workload pod/service CIDRs must not overlap the management
 cluster's or the guest NAT range — see [`templates/cluster-template.yaml`](templates/cluster-template.yaml).
 
+### Multi-node workload clusters
+
+When workload nodes must reach each other across management-cluster nodes, use the
+`multi-node` flavor. It attaches a secondary routable interface to every node
+(`nodeNetworkRef`) and points kubelet `--node-ip` and the apiserver
+`--advertise-address` at that address — without which every node advertises the same
+node-local NAT IP and worker pods resolving `kubernetes.default` reach their own NAT:
+
+```sh
+KUBESWIFT_CONTROL_PLANE_NETWORK=sec-net KUBESWIFT_WORKER_NETWORK=sec-net \
+clusterctl generate cluster my-cluster \
+  --infrastructure kubeswift --flavor multi-node \
+  --kubernetes-version v1.34.0 \
+  --control-plane-machine-count 1 \
+  --worker-machine-count 2 | kubectl apply -f -
+```
+
+Point both variables at the same `NetworkAttachmentDefinition` when one L2 segment
+spans every node (an OVN-Kubernetes secondary UDN, say), or at different NADs when the
+segment is assembled from per-node bridge NADs. Validated on OVN-Kubernetes and on
+Calico with a VXLAN-mesh bridge NAD.
+
+On a single-control-plane cluster, pods scheduled on the control plane can hit a
+service hairpin reaching the apiserver — see
+[single-control-plane-hairpin.md](docs/operations/single-control-plane-hairpin.md).
+
 ## Build
 
 ```sh
