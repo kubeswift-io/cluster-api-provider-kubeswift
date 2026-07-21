@@ -1,5 +1,5 @@
 # clusterctl cluster template — KubeSwift multi-node (nodeNetworkRef).
-# Use: clusterctl generate cluster NAME --infrastructure kubeswift --flavor multi-node \
+# Use: clusterctl generate cluster NAME --infrastructure kubeswift-io --flavor multi-node \
 #        --kubernetes-version v1.34.0 --control-plane-machine-count 1 --worker-machine-count 2
 #
 # What this adds over the default flavor: every node gets a SECONDARY routable

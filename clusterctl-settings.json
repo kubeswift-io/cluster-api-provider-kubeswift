@@ -1,7 +1,7 @@
 {
-  "name": "infrastructure-kubeswift",
+  "name": "infrastructure-kubeswift-io",
   "config": {
     "componentsFile": "infrastructure-components.yaml",
-    "nextVersion": "v0.1.1"
+    "nextVersion": "v0.1.2"
   }
 }
