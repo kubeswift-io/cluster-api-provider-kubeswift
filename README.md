@@ -36,7 +36,7 @@ Add the provider to `~/.cluster-api/clusterctl.yaml`:
 
 ```yaml
 providers:
-  - name: kubeswift
+  - name: kubeswift-io
     url: https://github.com/kubeswift-io/cluster-api-provider-kubeswift/releases/latest/infrastructure-components.yaml
     type: InfrastructureProvider
 ```
@@ -44,7 +44,7 @@ providers:
 On a management cluster that already runs KubeSwift and cert-manager:
 
 ```sh
-clusterctl init --infrastructure kubeswift
+clusterctl init --infrastructure kubeswift-io
 ```
 
 Generate a workload cluster. `mode: Service` (the default in the shipped template)
@@ -53,7 +53,7 @@ required:
 
 ```sh
 clusterctl generate cluster my-cluster \
-  --infrastructure kubeswift \
+  --infrastructure kubeswift-io \
   --kubernetes-version v1.34.0 \
   --control-plane-machine-count 1 \
   --worker-machine-count 2 | kubectl apply -f -
@@ -76,7 +76,7 @@ node-local NAT IP and worker pods resolving `kubernetes.default` reach their own
 ```sh
 KUBESWIFT_CONTROL_PLANE_NETWORK=sec-net KUBESWIFT_WORKER_NETWORK=sec-net \
 clusterctl generate cluster my-cluster \
-  --infrastructure kubeswift --flavor multi-node \
+  --infrastructure kubeswift-io --flavor multi-node \
   --kubernetes-version v1.34.0 \
   --control-plane-machine-count 1 \
   --worker-machine-count 2 | kubectl apply -f -

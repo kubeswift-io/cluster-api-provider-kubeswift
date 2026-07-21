@@ -1,5 +1,5 @@
 # clusterctl cluster template — KubeSwift, mode:Service (no OVN required).
-# Use: clusterctl generate cluster NAME --infrastructure kubeswift \
+# Use: clusterctl generate cluster NAME --infrastructure kubeswift-io \
 #        --kubernetes-version v1.34.0 --control-plane-machine-count 1 --worker-machine-count 2
 # Variables (with defaults): NAMESPACE, POD_CIDR, SERVICE_CIDR, KUBESWIFT_IMAGE,
 # KUBESWIFT_CONTROL_PLANE_CLASS, KUBESWIFT_WORKER_CLASS.

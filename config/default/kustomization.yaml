@@ -11,7 +11,7 @@ namePrefix: cluster-api-provider-kubeswift-
 labels:
 - includeSelectors: false
   pairs:
-    cluster.x-k8s.io/provider: infrastructure-kubeswift
+    cluster.x-k8s.io/provider: infrastructure-kubeswift-io
 
 resources:
 - ../crd

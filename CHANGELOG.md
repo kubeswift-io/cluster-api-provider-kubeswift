@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.1.2] — 2026-07-20
+
+### Changed
+- **clusterctl provider name is now `kubeswift-io`** (was `kubeswift`). The
+  `github.com/kubeswift` GitHub org is owned by another entity, and the clusterctl
+  provider-naming rule requires a provider outside `kubernetes-sigs` to prefix its
+  name with the GitHub org it is developed under — here `kubeswift-io`. Install with
+  `clusterctl init --infrastructure kubeswift-io` and generate with
+  `--infrastructure kubeswift-io`; the components now carry
+  `cluster.x-k8s.io/provider: infrastructure-kubeswift-io`. The API group, CRDs,
+  container image, and namespace are unchanged. Anyone who installed `v0.1.1` under
+  the old name should `clusterctl delete kubeswift` and reinstall under `kubeswift-io`.
+
 ## [v0.1.1] — 2026-07-20
 
 ### Added
