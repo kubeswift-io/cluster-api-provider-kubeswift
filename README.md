@@ -1,7 +1,7 @@
 # cluster-api-provider-kubeswift
 
-A [Cluster API](https://cluster-api.sigs.k8s.io/) infrastructure provider that
-runs workload-cluster machines as [KubeSwift](https://github.com/kubeswift-io/kubeswift)
+A [Cluster API](https://cluster-api.sigs.k8s.io/) infrastructure provider (**CAPKS**)
+that runs workload-cluster machines as [KubeSwift](https://github.com/kubeswift-io/kubeswift)
 virtual machines. Core Cluster API and this provider run on a management cluster
 that has KubeSwift installed; each `Machine` is reconciled into a `SwiftGuest` VM,
 the same way the Docker provider (CAPD) backs machines with containers.
