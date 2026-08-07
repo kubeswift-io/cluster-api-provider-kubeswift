@@ -59,9 +59,9 @@ func validateGPU(gpu *infrav1.SwiftGuestGPU) error {
 		return fmt.Errorf("spec.backend.swiftGuest.gpu: set exactly one of " +
 			"resourceClaimTemplateName, resourceClaimName or gpuProfileRef")
 	}
-	if gpu.Tier != "" && gpu.Tier != "pcie" {
-		return fmt.Errorf("spec.backend.swiftGuest.gpu.tier %q: only pcie is supported "+
-			"(hgx tiers need QEMU and a host Fabric Manager)", gpu.Tier)
+	if gpu.Tier != "" && gpu.Tier != infrav1.GPUTierPCIe {
+		return fmt.Errorf("spec.backend.swiftGuest.gpu.tier %q: only %s is supported "+
+			"(hgx tiers need QEMU and a host Fabric Manager)", gpu.Tier, infrav1.GPUTierPCIe)
 	}
 	return nil
 }

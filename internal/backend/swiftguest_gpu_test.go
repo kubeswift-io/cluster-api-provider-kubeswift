@@ -13,7 +13,7 @@ func TestRenderSwiftGuest_GPU_DRATemplate(t *testing.T) {
 	req, cfg := testRenderRequest(nil, "")
 	cfg.GPU = &infrav1.SwiftGuestGPU{
 		ResourceClaimTemplateName: "single-vfio-gpu",
-		Tier:                      "pcie",
+		Tier:                      infrav1.GPUTierPCIe,
 		Hugepages:                 "1Gi",
 	}
 	g := renderSwiftGuest(req, cfg)
@@ -22,7 +22,7 @@ func TestRenderSwiftGuest_GPU_DRATemplate(t *testing.T) {
 	if !found {
 		t.Fatal("spec.gpuResourceClaim not rendered")
 	}
-	if claim["resourceClaimTemplateName"] != "single-vfio-gpu" || claim["tier"] != "pcie" ||
+	if claim["resourceClaimTemplateName"] != "single-vfio-gpu" || claim["tier"] != infrav1.GPUTierPCIe ||
 		claim["hugepages"] != "1Gi" {
 		t.Fatalf("spec.gpuResourceClaim = %v", claim)
 	}
@@ -68,7 +68,7 @@ func TestValidateGPU(t *testing.T) {
 		// naming two backends — so both, or neither, cannot mean anything.
 		"two backends": {&infrav1.SwiftGuestGPU{ResourceClaimTemplateName: "t", GPUProfileRef: "p"},
 			"exactly one"},
-		"empty": {&infrav1.SwiftGuestGPU{Tier: "pcie"}, "exactly one"},
+		"empty": {&infrav1.SwiftGuestGPU{Tier: infrav1.GPUTierPCIe}, "exactly one"},
 		"hgx tier": {&infrav1.SwiftGuestGPU{ResourceClaimTemplateName: "t", Tier: "hgx-shared"},
 			"only pcie is supported"},
 	}

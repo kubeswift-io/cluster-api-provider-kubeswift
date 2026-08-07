@@ -103,6 +103,11 @@ type SwiftGuestBackend struct {
 	StorageClassName string `json:"storageClassName,omitempty"`
 }
 
+// GPUTierPCIe is the only supported GPU tier: Cloud Hypervisor with a flat PCI
+// topology. The HGX tiers need QEMU plus a host Fabric Manager, and KubeSwift
+// rejects hgx-full at allocation.
+const GPUTierPCIe = "pcie"
+
 // SwiftGuestGPU requests a whole passthrough GPU for a machine. Exactly one
 // allocation backend is used, mirroring KubeSwift's own rule.
 type SwiftGuestGPU struct {
