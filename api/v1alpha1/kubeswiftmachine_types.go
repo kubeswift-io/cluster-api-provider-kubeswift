@@ -78,6 +78,21 @@ type SwiftGuestBackend struct {
 	// +optional
 	NodeNetworkRef string `json:"nodeNetworkRef,omitempty"`
 
+	// gpu optionally gives this machine a whole passthrough GPU, making it a
+	// GPU-capable Kubernetes worker.
+	//
+	// KubeSwift owns the physical device: it binds it to vfio-pci and passes it
+	// into the VM. What runs INSIDE the guest — a device plugin, a fractional GPU
+	// sharer such as HAMi, a plain CUDA workload — is the workload cluster's
+	// business and nothing to do with this provider.
+	//
+	// A GPU machine is a disk boot (KubeSwift makes GPU passthrough mutually
+	// exclusive with kernel boot), and only the pcie tier is supported: the HGX
+	// tiers need QEMU plus a host Fabric Manager, and KubeSwift rejects hgx-full at
+	// allocation.
+	// +optional
+	GPU *SwiftGuestGPU `json:"gpu,omitempty"`
+
 	// storageClassName optionally overrides the StorageClass for the VM's root
 	// disk. Empty inherits the source SwiftImage's class (KubeSwift's default).
 	// Set this when the image's class does not fit the target cluster -- e.g. to
@@ -86,6 +101,51 @@ type SwiftGuestBackend struct {
 	// controller-created root-disk PVC only.
 	// +optional
 	StorageClassName string `json:"storageClassName,omitempty"`
+}
+
+// SwiftGuestGPU requests a whole passthrough GPU for a machine. Exactly one
+// allocation backend is used, mirroring KubeSwift's own rule.
+type SwiftGuestGPU struct {
+	// resourceClaimTemplateName selects the DRA backend: the launcher pod carries a
+	// ResourceClaim minted from this template, and the kube-scheduler plus a DRA
+	// driver allocate the device at pod-schedule time. Recommended.
+	//
+	// Mutually exclusive with resourceClaimName and gpuProfileRef.
+	// +optional
+	ResourceClaimTemplateName string `json:"resourceClaimTemplateName,omitempty"`
+
+	// resourceClaimName selects the DRA backend using a pre-created, SHARED
+	// ResourceClaim. A VFIO device can back only one running VM, so this is only
+	// correct when exactly one machine references the claim.
+	//
+	// Mutually exclusive with resourceClaimTemplateName and gpuProfileRef.
+	// +optional
+	ResourceClaimName string `json:"resourceClaimName,omitempty"`
+
+	// requestName is the device-request name inside the claim to read the
+	// allocation result back from. Defaults to KubeSwift's own default ("gpu").
+	// +optional
+	RequestName string `json:"requestName,omitempty"`
+
+	// gpuProfileRef selects KubeSwift's NATIVE allocation backend: a
+	// SwiftGPUProfile in the guest namespace, with the SwiftGPU controller picking
+	// node and devices before the pod exists.
+	//
+	// Mutually exclusive with the two claim references.
+	// +optional
+	GPUProfileRef string `json:"gpuProfileRef,omitempty"`
+
+	// tier selects hypervisor and firmware. Only pcie (Cloud Hypervisor) is
+	// supported here.
+	// +kubebuilder:validation:Enum=pcie
+	// +kubebuilder:default=pcie
+	// +optional
+	Tier string `json:"tier,omitempty"`
+
+	// hugepages sizes the GPU memory hugepage backing ("1Gi", "2Mi", or empty).
+	// +kubebuilder:validation:Enum="";"1Gi";"2Mi"
+	// +optional
+	Hugepages string `json:"hugepages,omitempty"`
 }
 
 // KubeSwiftMachineStatus defines the observed state of KubeSwiftMachine.

@@ -42,6 +42,30 @@ func (b *SwiftGuestBackend) Type() infrav1.MachineBackendType {
 
 func seedName(machineName string) string { return machineName + "-seed" }
 
+// validateGPU enforces one allocation backend. KubeSwift rejects a guest that
+// names both, and a VFIO device backs exactly one running VM — so a shared claim
+// across machines is a configuration that cannot work, not a preference.
+func validateGPU(gpu *infrav1.SwiftGuestGPU) error {
+	if gpu == nil {
+		return nil
+	}
+	set := 0
+	for _, v := range []string{gpu.ResourceClaimTemplateName, gpu.ResourceClaimName, gpu.GPUProfileRef} {
+		if v != "" {
+			set++
+		}
+	}
+	if set != 1 {
+		return fmt.Errorf("spec.backend.swiftGuest.gpu: set exactly one of " +
+			"resourceClaimTemplateName, resourceClaimName or gpuProfileRef")
+	}
+	if gpu.Tier != "" && gpu.Tier != "pcie" {
+		return fmt.Errorf("spec.backend.swiftGuest.gpu.tier %q: only pcie is supported "+
+			"(hgx tiers need QEMU and a host Fabric Manager)", gpu.Tier)
+	}
+	return nil
+}
+
 // Reconcile ensures the SwiftSeedProfile + SwiftGuest exist and reports the VM state.
 func (b *SwiftGuestBackend) Reconcile(ctx context.Context, req Request) (Result, error) {
 	cfg := req.Machine.Spec.Backend.SwiftGuest
@@ -50,6 +74,9 @@ func (b *SwiftGuestBackend) Reconcile(ctx context.Context, req Request) (Result,
 	}
 	if cfg.ImageRef == "" || cfg.GuestClassRef == "" {
 		return Result{}, fmt.Errorf("spec.backend.swiftGuest.imageRef and guestClassRef are required")
+	}
+	if err := validateGPU(cfg.GPU); err != nil {
+		return Result{}, err
 	}
 	if req.ControlPlaneExposure != nil && cfg.NetworkRef != "" {
 		// Service-backed endpoint provisioning exposes the API server over the pod
@@ -195,6 +222,32 @@ func renderSwiftGuest(req Request, cfg *infrav1.SwiftGuestBackend) *unstructured
 		spec["storage"] = map[string]interface{}{
 			"storageClassName": cfg.StorageClassName,
 			"accessMode":       "ReadWriteOnce",
+		}
+	}
+	if gpu := cfg.GPU; gpu != nil {
+		// Whole-device passthrough. KubeSwift owns the physical GPU: it binds the
+		// device to vfio-pci and passes it into the VM. Whatever shares or consumes
+		// it inside the guest is the workload cluster's business.
+		switch {
+		case gpu.GPUProfileRef != "":
+			spec["gpuProfileRef"] = localRef(gpu.GPUProfileRef)
+		default:
+			claim := map[string]interface{}{}
+			if gpu.ResourceClaimTemplateName != "" {
+				claim["resourceClaimTemplateName"] = gpu.ResourceClaimTemplateName
+			} else if gpu.ResourceClaimName != "" {
+				claim["resourceClaimName"] = gpu.ResourceClaimName
+			}
+			if gpu.RequestName != "" {
+				claim["requestName"] = gpu.RequestName
+			}
+			if gpu.Tier != "" {
+				claim["tier"] = gpu.Tier
+			}
+			if gpu.Hugepages != "" {
+				claim["hugepages"] = gpu.Hugepages
+			}
+			spec["gpuResourceClaim"] = claim
 		}
 	}
 	if req.ControlPlaneExposure != nil {
