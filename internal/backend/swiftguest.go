@@ -42,6 +42,22 @@ func (b *SwiftGuestBackend) Type() infrav1.MachineBackendType {
 
 func seedName(machineName string) string { return machineName + "-seed" }
 
+// validatePlacement rejects the one combination that fails silently: a pinned node
+// plus a GPU. nodeName bypasses the scheduler, and a DRA claim is allocated by the
+// scheduler — so the pair yields a VM whose claim is never allocated and which
+// therefore never gets its device. (A native gpuProfileRef is placed by KubeSwift's
+// allocator, which nodeName would have to match by luck; KubeSwift's own webhook
+// then rejects the mismatch.) Either way the answer is the same: a GPU machine is
+// already placed by where its device is.
+func validatePlacement(cfg *infrav1.SwiftGuestBackend) error {
+	if cfg.NodeName != "" && cfg.GPU != nil {
+		return fmt.Errorf("spec.backend.swiftGuest: nodeName cannot be combined with gpu — " +
+			"a GPU machine is placed by where its device is, and pinning the pod bypasses " +
+			"the scheduler that allocates the claim")
+	}
+	return nil
+}
+
 // validateGPU enforces one allocation backend. KubeSwift rejects a guest that
 // names both, and a VFIO device backs exactly one running VM — so a shared claim
 // across machines is a configuration that cannot work, not a preference.
@@ -76,6 +92,9 @@ func (b *SwiftGuestBackend) Reconcile(ctx context.Context, req Request) (Result,
 		return Result{}, fmt.Errorf("spec.backend.swiftGuest.imageRef and guestClassRef are required")
 	}
 	if err := validateGPU(cfg.GPU); err != nil {
+		return Result{}, err
+	}
+	if err := validatePlacement(cfg); err != nil {
 		return Result{}, err
 	}
 	if req.ControlPlaneExposure != nil && cfg.NetworkRef != "" {
@@ -223,6 +242,13 @@ func renderSwiftGuest(req Request, cfg *infrav1.SwiftGuestBackend) *unstructured
 			"storageClassName": cfg.StorageClassName,
 			"accessMode":       "ReadWriteOnce",
 		}
+	}
+	if cfg.NodeName != "" {
+		// Static placement: KubeSwift pins the launcher pod by writing
+		// pod.spec.nodeName directly, so the machine's VM lands on this host and
+		// nowhere else. Direct binding also means a bad fit is rejected by the
+		// kubelet in seconds rather than sitting Pending.
+		spec["nodeName"] = cfg.NodeName
 	}
 	if gpu := cfg.GPU; gpu != nil {
 		// Whole-device passthrough. KubeSwift owns the physical GPU: it binds the
