@@ -147,6 +147,26 @@ spec:
                           networkRef optionally attaches the VM's primary interface to a named network
                           (a NetworkAttachmentDefinition). Empty uses the default node-local network.
                         type: string
+                      nodeName:
+                        description: |-
+                          nodeName pins this machine's VM to a named Kubernetes node in the
+                          infrastructure cluster, for the cases where placement is not the scheduler's
+                          to choose: a host with the hardware, a licence bound to a machine, storage
+                          that only one node can serve, or a node-local network the VM must share with
+                          something else.
+
+                          KubeSwift implements it by writing pod.spec.nodeName on the launcher pod, so
+                          the scheduler is bypassed entirely and a bad fit is rejected by the kubelet in
+                          seconds instead of sitting Pending.
+
+                          That is also why it cannot be combined with gpu: a DRA claim is allocated BY
+                          the scheduler, so bypassing it would leave the claim unallocated and the VM
+                          with no device, and a native gpuProfileRef is placed by KubeSwift's own
+                          allocation, which this would have to agree with by luck. A GPU machine is
+                          already pinned — by where its device is.
+                        maxLength: 253
+                        minLength: 1
+                        type: string
                       nodeNetworkRef:
                         description: |-
                           nodeNetworkRef optionally attaches a SECONDARY interface to a named routable

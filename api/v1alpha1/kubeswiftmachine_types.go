@@ -78,6 +78,26 @@ type SwiftGuestBackend struct {
 	// +optional
 	NodeNetworkRef string `json:"nodeNetworkRef,omitempty"`
 
+	// nodeName pins this machine's VM to a named Kubernetes node in the
+	// infrastructure cluster, for the cases where placement is not the scheduler's
+	// to choose: a host with the hardware, a licence bound to a machine, storage
+	// that only one node can serve, or a node-local network the VM must share with
+	// something else.
+	//
+	// KubeSwift implements it by writing pod.spec.nodeName on the launcher pod, so
+	// the scheduler is bypassed entirely and a bad fit is rejected by the kubelet in
+	// seconds instead of sitting Pending.
+	//
+	// That is also why it cannot be combined with gpu: a DRA claim is allocated BY
+	// the scheduler, so bypassing it would leave the claim unallocated and the VM
+	// with no device, and a native gpuProfileRef is placed by KubeSwift's own
+	// allocation, which this would have to agree with by luck. A GPU machine is
+	// already pinned — by where its device is.
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	NodeName string `json:"nodeName,omitempty"`
+
 	// gpu optionally gives this machine a whole passthrough GPU, making it a
 	// GPU-capable Kubernetes worker.
 	//
