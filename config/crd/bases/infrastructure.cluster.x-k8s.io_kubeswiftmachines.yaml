@@ -71,6 +71,67 @@ spec:
                       swiftGuest configures the SwiftGuest (full VM) backend. Required when
                       type is "SwiftGuest".
                     properties:
+                      gpu:
+                        description: |-
+                          gpu optionally gives this machine a whole passthrough GPU, making it a
+                          GPU-capable Kubernetes worker.
+
+                          KubeSwift owns the physical device: it binds it to vfio-pci and passes it
+                          into the VM. What runs INSIDE the guest — a device plugin, a fractional GPU
+                          sharer such as HAMi, a plain CUDA workload — is the workload cluster's
+                          business and nothing to do with this provider.
+
+                          A GPU machine is a disk boot (KubeSwift makes GPU passthrough mutually
+                          exclusive with kernel boot), and only the pcie tier is supported: the HGX
+                          tiers need QEMU plus a host Fabric Manager, and KubeSwift rejects hgx-full at
+                          allocation.
+                        properties:
+                          gpuProfileRef:
+                            description: |-
+                              gpuProfileRef selects KubeSwift's NATIVE allocation backend: a
+                              SwiftGPUProfile in the guest namespace, with the SwiftGPU controller picking
+                              node and devices before the pod exists.
+
+                              Mutually exclusive with the two claim references.
+                            type: string
+                          hugepages:
+                            description: hugepages sizes the GPU memory hugepage backing
+                              ("1Gi", "2Mi", or empty).
+                            enum:
+                            - ""
+                            - 1Gi
+                            - 2Mi
+                            type: string
+                          requestName:
+                            description: |-
+                              requestName is the device-request name inside the claim to read the
+                              allocation result back from. Defaults to KubeSwift's own default ("gpu").
+                            type: string
+                          resourceClaimName:
+                            description: |-
+                              resourceClaimName selects the DRA backend using a pre-created, SHARED
+                              ResourceClaim. A VFIO device can back only one running VM, so this is only
+                              correct when exactly one machine references the claim.
+
+                              Mutually exclusive with resourceClaimTemplateName and gpuProfileRef.
+                            type: string
+                          resourceClaimTemplateName:
+                            description: |-
+                              resourceClaimTemplateName selects the DRA backend: the launcher pod carries a
+                              ResourceClaim minted from this template, and the kube-scheduler plus a DRA
+                              driver allocate the device at pod-schedule time. Recommended.
+
+                              Mutually exclusive with resourceClaimName and gpuProfileRef.
+                            type: string
+                          tier:
+                            default: pcie
+                            description: |-
+                              tier selects hypervisor and firmware. Only pcie (Cloud Hypervisor) is
+                              supported here.
+                            enum:
+                            - pcie
+                            type: string
+                        type: object
                       guestClassRef:
                         description: |-
                           guestClassRef names the cluster-scoped SwiftGuestClass that supplies the VM's
