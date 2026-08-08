@@ -20,8 +20,13 @@ const namespace = "cluster-api-provider-kubeswift-system"
 // serviceAccountName created for the project
 const serviceAccountName = "cluster-api-provider-kubeswift-controller-manager"
 
-// metricsServiceName is the name of the metrics service of the project
-const metricsServiceName = "cluster-api-provider-kubeswift-controller-manager-metrics-service"
+// metricsServiceName is the name of the metrics service of the project.
+//
+// This must match what config/default actually generates. It did not: the scaffolded
+// name carried a "-controller-manager" segment the kustomization does not produce, so
+// the metrics spec failed on a NotFound service in every run — the second of two
+// reasons this suite never went green.
+const metricsServiceName = "cluster-api-provider-kubeswift-metrics-service"
 
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
 const metricsRoleBindingName = "cluster-api-provider-kubeswift-metrics-binding"
@@ -156,7 +161,13 @@ var _ = Describe("Manager", Ordered, func() {
 
 		It("should ensure the metrics endpoint is serving metrics", func() {
 			By("creating a ClusterRoleBinding for the service account to allow access to metrics")
-			cmd := exec.Command("kubectl", "create", "clusterrolebinding", metricsRoleBindingName,
+			// Idempotent on purpose: the binding is removed in AfterAll, which does not
+			// run when an earlier spec fails — so a single failure used to leave every
+			// later run failing on "already exists" instead of on the real problem.
+			cmd := exec.Command("kubectl", "delete", "clusterrolebinding", metricsRoleBindingName,
+				"--ignore-not-found")
+			_, _ = utils.Run(cmd)
+			cmd = exec.Command("kubectl", "create", "clusterrolebinding", metricsRoleBindingName,
 				"--clusterrole=cluster-api-provider-kubeswift-metrics-reader",
 				fmt.Sprintf("--serviceaccount=%s:%s", namespace, serviceAccountName),
 			)
