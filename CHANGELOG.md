@@ -4,6 +4,39 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.2.0] — 2026-08-08
+
+### Added
+- **Whole-GPU passthrough for a machine** — `KubeSwiftMachine.spec.backend.swiftGuest.gpu`
+  takes either a DRA claim (`resourceClaimTemplateName` / `resourceClaimName`, with
+  `requestName`, `tier`, `hugepages`) or a native `gpuProfileRef`, making a machine a
+  GPU-capable Kubernetes worker. KubeSwift owns the physical device — it binds it to
+  vfio-pci and passes it into the VM; what shares or consumes it *inside* the guest is
+  the workload cluster's business and nothing to do with this provider. Only `tier: pcie`
+  is supported: the HGX tiers need QEMU plus a host Fabric Manager, and KubeSwift rejects
+  `hgx-full` at allocation.
+- **Static machine placement** — `KubeSwiftMachine.spec.backend.swiftGuest.nodeName`
+  pins a machine's VM to a named node in the infrastructure cluster, for placements that
+  are not the scheduler's to choose: the host with the hardware, a licence bound to a
+  machine, storage only one node serves, or a node-local network the VM must share.
+  KubeSwift writes `pod.spec.nodeName` on the launcher pod, so a bad fit is rejected by
+  the kubelet in seconds rather than sitting Pending. It cannot be combined with `gpu`:
+  pinning bypasses the scheduler, a DRA claim is allocated *by* the scheduler, and a GPU
+  machine is already placed by where its device is.
+
+Both fields are optional and inert when unset, so an existing machine renders exactly
+the SwiftGuest it rendered before.
+
+### Fixed
+- **The e2e suite never went green**, for two independent reasons, and so was no signal
+  at all. `InstallCertManager` waited for the webhook *Deployment* to be Available, which
+  does not mean its CA has been injected — the next apply failed with
+  `x509: certificate signed by unknown authority`, taking down `[BeforeAll]` before a
+  single spec ran. It now waits until the webhook actually answers a server-side dry-run.
+  And the metrics spec looked for a Service name kustomize does not generate. The
+  metrics ClusterRoleBinding is also created idempotently, so one failure no longer
+  poisons every later run with `already exists`. `make test-e2e` now passes 4 of 4.
+
 ## [v0.1.2] — 2026-07-20
 
 ### Changed

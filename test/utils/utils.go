@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:staticcheck,revive // ginkgo dot-import is idiomatic
 )
@@ -111,9 +112,47 @@ func InstallCertManager() error {
 		"--namespace", "cert-manager",
 		"--timeout", "5m",
 	)
+	if _, err := Run(cmd); err != nil {
+		return err
+	}
+	return waitForCertManagerWebhook()
+}
 
-	_, err := Run(cmd)
-	return err
+// waitForCertManagerWebhook blocks until cert-manager's admission webhook actually
+// answers, not merely until its Deployment reports Available.
+//
+// The two are not the same, and the gap is what broke this suite: with the Deployment
+// Available but the CA bundle not yet injected into the webhook configuration, the
+// next apply fails with
+//
+//	failed calling webhook "webhook.cert-manager.io": tls: failed to verify
+//	certificate: x509: certificate signed by unknown authority
+//
+// which surfaced as "Manager [BeforeAll] should run successfully" failing before a
+// single spec ran. A server-side dry-run goes through the webhook, so it succeeding is
+// proof the webhook is both serving and trusted — which is the condition we actually
+// depend on.
+func waitForCertManagerWebhook() error {
+	const probe = `apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: e2e-webhook-probe
+  namespace: cert-manager
+spec:
+  selfSigned: {}
+`
+	var lastErr error
+	for i := 0; i < 60; i++ {
+		cmd := exec.Command("kubectl", "apply", "--dry-run=server", "-f", "-")
+		cmd.Stdin = strings.NewReader(probe)
+		if _, err := Run(cmd); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return fmt.Errorf("cert-manager webhook did not become answerable: %w", lastErr)
 }
 
 // IsCertManagerCRDsInstalled checks if any Cert Manager CRDs are installed
