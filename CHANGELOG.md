@@ -4,6 +4,33 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.2.1] — 2026-08-15
+
+### Changed
+- **The provider now installs into `capks-system`**, not
+  `cluster-api-provider-kubeswift-system` (#23). Every upstream Cluster API
+  provider names itself by its acronym — core is `capi-system`, AWS `capa-`,
+  Azure `capz-` — and the full repository name gave a 38-character namespace plus
+  object names like `cluster-api-provider-kubeswift-kubeswiftmachinetemplate-editor-role`.
+  Resources are now `capks-controller-manager`, `capks-webhook-service`,
+  `capks-metrics-service`. The repository name still appears in the
+  `app.kubernetes.io/name` label.
+
+  The clusterctl provider label (`cluster.x-k8s.io/provider:
+  infrastructure-kubeswift-io`) is **unchanged**, so clusterctl still finds,
+  upgrades and deletes provider objects the same way.
+
+  **Breaking for an existing install.** clusterctl records the namespace a
+  provider was installed into and will not move it across namespaces, so an
+  in-place `clusterctl upgrade` from v0.2.0 will not relocate the provider:
+
+  ```bash
+  clusterctl delete --infrastructure kubeswift-io
+  clusterctl init   --infrastructure kubeswift-io
+  ```
+
+  The old namespace survives the delete and can be removed once empty.
+
 ## [v0.2.0] — 2026-08-08
 
 ### Added
