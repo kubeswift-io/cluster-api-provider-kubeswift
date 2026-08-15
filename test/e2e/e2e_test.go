@@ -15,7 +15,7 @@ import (
 )
 
 // namespace where the project is deployed in
-const namespace = "cluster-api-provider-kubeswift-system"
+const namespace = "capks-system"
 
 // serviceAccountName created for the project
 const serviceAccountName = "cluster-api-provider-kubeswift-controller-manager"

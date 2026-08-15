@@ -1,8 +1,20 @@
 # Adds namespace to all resources.
-namespace: cluster-api-provider-kubeswift-system
+#
+# capks- is the provider's acronym, matching how every upstream Cluster API
+# provider names itself: core is capi-system/capi-controller-manager, AWS is
+# capa-, Azure capz-. The previous cluster-api-provider-kubeswift- prefix made
+# the namespace 38 characters and every object name longer still, for no benefit
+# — the repository name belongs in the app.kubernetes.io/name label, which still
+# carries it, not in every resource name an operator has to type.
+#
+# The two values are coupled: the Namespace object in config/manager/manager.yaml
+# is literally named "system", so the namespace that everything lands in is
+# namePrefix + "system". Change one without the other and the manifests install
+# into a namespace nothing creates.
+namespace: capks-system
 
 # Value of this field is prepended to the names of all resources.
-namePrefix: cluster-api-provider-kubeswift-
+namePrefix: capks-
 
 # The clusterctl provider label. clusterctl uses it to identify and manage every
 # object belonging to this provider (install, upgrade, delete, and move/pivot).
