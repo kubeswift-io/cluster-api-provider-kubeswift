@@ -1,0 +1,64 @@
+version: 2
+
+# Dependabot proposes upgrades; OSV-Scanner (.github/workflows/osv-scanner.yml)
+# says when we are exposed. Neither is much use without the other.
+#
+# Weekly, grouped and capped, on purpose: a stream of ungrouped dependency PRs gets
+# merged without being read, which is the habit a supply-chain attack relies on.
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule: {interval: weekly}
+    open-pull-requests-limit: 5
+    # Indirect dependencies too. Dependabot's gomod default is `direct` only, and
+    # on the day this file was added every OSV finding on main was indirect —
+    # including google.golang.org/grpc at CVSS 8.8. Repository security updates
+    # were already enabled and had raised no alert and opened no PR for any of
+    # them, so they are not a substitute for this.
+    allow:
+      - dependency-type: all
+    groups:
+      # Kubernetes, controller-runtime and Cluster API move as one set: a Cluster
+      # API minor release pins the Kubernetes and controller-runtime minors it is
+      # built against, and it is this provider's contract version.
+      #
+      # So the set is split by update type. Patch releases are routine and safe to
+      # take together.
+      kubernetes-patch:
+        patterns: ["k8s.io/*", "sigs.k8s.io/*"]
+        update-types: [patch]
+      # Minor and major releases change the Cluster API contract or the
+      # Kubernetes minor, and Dependabot bumps each module to its own latest
+      # rather than to a set that builds together. Treat this PR as a prompt to
+      # move deliberately to the versions the target Cluster API release pins,
+      # not as something to merge as-is.
+      kubernetes-minor:
+        patterns: ["k8s.io/*", "sigs.k8s.io/*"]
+        update-types: [minor, major]
+      # The catch-all EXCLUDES the patterns above rather than relying on group
+      # order. A group with no `patterns` matches everything, and which group
+      # claims a dependency first is not something we can verify from here — the
+      # KubeSwift repo had a kubernetes group that never produced a single PR
+      # because its catch-all kept winning.
+      go-minor-patch:
+        exclude-patterns: ["k8s.io/*", "sigs.k8s.io/*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: {interval: weekly}
+    open-pull-requests-limit: 5
+    groups:
+      # The two OSV-Scanner reusable workflows are one tool at one commit, but
+      # they are different action paths and Dependabot treats sub-paths as
+      # separate dependencies. Ungrouped they arrive as separate PRs that leave
+      # the pair at different versions.
+      osv-scanner:
+        patterns: ["google/osv-scanner-action*"]
+        update-types: [major, minor, patch]
+
+  # The manager image's builder and runtime base.
+  - package-ecosystem: docker
+    directory: /
+    schedule: {interval: weekly}
+    open-pull-requests-limit: 5
