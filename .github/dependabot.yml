@@ -49,6 +49,15 @@ updates:
       # Kubernetes minor, so they are deliberately not listed.)
       - dependency-name: "sigs.k8s.io/apiserver-network-proxy/konnectivity-client"
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      # cel-go renamed its module to cel.dev/cel-go at v0.32.0. Dependabot aims
+      # straight for the newest release, finds a go.mod declaring the new path
+      # (`go_module_path_mismatch`), and abandons the dependency without trying the
+      # older releases — failing the whole gomod job every week, and never
+      # proposing v0.30.0, which fixes GO-2026-6094. Ignoring only the renamed
+      # releases lets it reach v0.31.0, the newest under this path. The move to
+      # cel.dev/cel-go happens when Kubernetes makes it, not here.
+      - dependency-name: "github.com/google/cel-go"
+        versions: [">= 0.32.0"]
     groups:
       # Patch releases of the set are routine and taken together.
       kubernetes-patch:
