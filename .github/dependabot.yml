@@ -41,6 +41,14 @@ updates:
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "sigs.k8s.io/cluster-api*"
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      # Not a Kubernetes module by name, but versioned in lockstep with Kubernetes:
+      # k8s.io/apiserver 0.35 requires 0.31.x, 0.36 requires 0.34.x and 0.37
+      # requires 0.36.x. Missing from the first version of this list, Dependabot
+      # proposed 0.36.0 — the Kubernetes 0.37 line — under Kubernetes 0.35.
+      # (json, randfill and yaml checked the same way are independent of the
+      # Kubernetes minor, so they are deliberately not listed.)
+      - dependency-name: "sigs.k8s.io/apiserver-network-proxy/konnectivity-client"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
     groups:
       # Patch releases of the set are routine and taken together.
       kubernetes-patch:
