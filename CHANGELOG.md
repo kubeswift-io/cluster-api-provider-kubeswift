@@ -6,6 +6,19 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **The e2e suite runs again.** It had failed on every run since July: it deployed
+  the provider into a bare Kind cluster without Cluster API (whose `Machine` the
+  provider watches) or, since v0.3.0, KubeSwift's CRDs, and it still used the
+  resource names from before the `capks-` prefix (#23). `make test-e2e` now creates
+  a dedicated Kind cluster reached through its own kubeconfig (it refuses any other
+  context), installs Cluster API with clusterctl at the version `go.mod` pins plus
+  KubeSwift's SwiftGuest/SwiftSeedProfile CRDs, and — besides the manager, metrics
+  and webhook checks — drives a worker Machine through the provider: seed profile
+  referencing the bootstrap Secret, `VMWaitingForReferences`, provisioning at the
+  launcher pod IP onto the Machine, and deletion. `make cleanup-test-e2e` removes
+  the cluster.
+
 ### Dependencies
 - **Built against Cluster API v1.14.3** (from v1.13.6), with the versions that
   release pins: controller-runtime **v0.24.1** (from v0.23.3) and the Kubernetes

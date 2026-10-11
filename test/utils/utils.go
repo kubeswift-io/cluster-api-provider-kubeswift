@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:staticcheck,revive // ginkgo dot-import is idiomatic
 )
@@ -17,9 +16,17 @@ const (
 	prometheusOperatorURL     = "https://github.com/prometheus-operator/prometheus-operator/" +
 		"releases/download/%s/bundle.yaml"
 
-	certmanagerVersion = "v1.16.3"
-	certmanagerURLTmpl = "https://github.com/cert-manager/cert-manager/releases/download/%s/cert-manager.yaml"
+	// kubeSwiftCRDURLTmpl is a KubeSwift CRD at a release tag. KubeSwift's controller
+	// is not installed — Kind cannot run its VMs — only the CRDs the provider creates
+	// and watches.
+	kubeSwiftCRDURLTmpl = "https://raw.githubusercontent.com/kubeswift-io/kubeswift/%s/config/crd/bases/%s.yaml"
 )
+
+// kubeSwiftCRDs are the KubeSwift CRDs the provider talks to.
+var kubeSwiftCRDs = []string{
+	"swift.kubeswift.io_swiftguests",
+	"seed.kubeswift.io_swiftseedprofiles",
+}
 
 func warnError(err error) {
 	_, _ = fmt.Fprintf(GinkgoWriter, "warning: %v\n", err)
@@ -89,103 +96,58 @@ func IsPrometheusCRDsInstalled() bool {
 	return false
 }
 
-// UninstallCertManager uninstalls the cert manager
-func UninstallCertManager() {
-	url := fmt.Sprintf(certmanagerURLTmpl, certmanagerVersion)
-	cmd := exec.Command("kubectl", "delete", "-f", url)
-	if _, err := Run(cmd); err != nil {
-		warnError(err)
-	}
-}
-
-// InstallCertManager installs the cert manager bundle.
-func InstallCertManager() error {
-	url := fmt.Sprintf(certmanagerURLTmpl, certmanagerVersion)
-	cmd := exec.Command("kubectl", "apply", "-f", url)
-	if _, err := Run(cmd); err != nil {
-		return err
-	}
-	// Wait for cert-manager-webhook to be ready, which can take time if cert-manager
-	// was re-installed after uninstalling on a cluster.
-	cmd = exec.Command("kubectl", "wait", "deployment.apps/cert-manager-webhook",
-		"--for", "condition=Available",
-		"--namespace", "cert-manager",
-		"--timeout", "5m",
-	)
-	if _, err := Run(cmd); err != nil {
-		return err
-	}
-	return waitForCertManagerWebhook()
-}
-
-// waitForCertManagerWebhook blocks until cert-manager's admission webhook actually
-// answers, not merely until its Deployment reports Available.
-//
-// The two are not the same, and the gap is what broke this suite: with the Deployment
-// Available but the CA bundle not yet injected into the webhook configuration, the
-// next apply fails with
-//
-//	failed calling webhook "webhook.cert-manager.io": tls: failed to verify
-//	certificate: x509: certificate signed by unknown authority
-//
-// which surfaced as "Manager [BeforeAll] should run successfully" failing before a
-// single spec ran. A server-side dry-run goes through the webhook, so it succeeding is
-// proof the webhook is both serving and trusted — which is the condition we actually
-// depend on.
-func waitForCertManagerWebhook() error {
-	const probe = `apiVersion: cert-manager.io/v1
-kind: Issuer
-metadata:
-  name: e2e-webhook-probe
-  namespace: cert-manager
-spec:
-  selfSigned: {}
-`
-	var lastErr error
-	for i := 0; i < 60; i++ {
-		cmd := exec.Command("kubectl", "apply", "--dry-run=server", "-f", "-")
-		cmd.Stdin = strings.NewReader(probe)
-		if _, err := Run(cmd); err == nil {
-			return nil
-		} else {
-			lastErr = err
-		}
-		time.Sleep(2 * time.Second)
-	}
-	return fmt.Errorf("cert-manager webhook did not become answerable: %w", lastErr)
-}
-
-// IsCertManagerCRDsInstalled checks if any Cert Manager CRDs are installed
-// by verifying the existence of key CRDs related to Cert Manager.
-func IsCertManagerCRDsInstalled() bool {
-	// List of common Cert Manager CRDs
-	certManagerCRDs := []string{
-		"certificates.cert-manager.io",
-		"issuers.cert-manager.io",
-		"clusterissuers.cert-manager.io",
-		"certificaterequests.cert-manager.io",
-		"orders.acme.cert-manager.io",
-		"challenges.acme.cert-manager.io",
-	}
-
-	// Execute the kubectl command to get all CRDs
-	cmd := exec.Command("kubectl", "get", "crds")
-	output, err := Run(cmd)
+// RequireKindContext fails unless kubectl's current context is the Kind cluster
+// named cluster. The suite installs Cluster API and deploys and undeploys the
+// provider, so pointed at a real management cluster it would replace what runs there.
+func RequireKindContext(cluster string) error {
+	out, err := Run(exec.Command("kubectl", "config", "current-context"))
 	if err != nil {
-		return false
+		return err
 	}
-
-	// Check if any of the Cert Manager CRDs are present
-	crdList := GetNonEmptyLines(output)
-	for _, crd := range certManagerCRDs {
-		for _, line := range crdList {
-			if strings.Contains(line, crd) {
-				return true
-			}
-		}
+	if got, want := strings.TrimSpace(out), "kind-"+cluster; got != want {
+		return fmt.Errorf("kubectl context is %q, want %q: run the suite with `make test-e2e`, "+
+			"which points it at its own Kind cluster", got, want)
 	}
+	return nil
+}
 
-	return false
+// InstallClusterAPI installs Cluster API — core, plus the kubeadm bootstrap and
+// control-plane providers clusterctl adds by default — at version, waiting until they
+// are available. clusterctl also installs cert-manager, and waits for its webhook to
+// answer. A cluster that already has Cluster API is left as it is.
+func InstallClusterAPI(clusterctl, version string) error {
+	if _, err := Run(exec.Command("kubectl", "get", "crd", "clusters.cluster.x-k8s.io")); err == nil {
+		_, _ = fmt.Fprintf(GinkgoWriter, "Cluster API is already installed; skipping clusterctl init\n")
+		return nil
+	}
+	cmd := exec.Command(clusterctl, "init",
+		"--core", "cluster-api:"+version,
+		"--bootstrap", "kubeadm:"+version,
+		"--control-plane", "kubeadm:"+version,
+		"--wait-providers",
+	)
+	_, err := Run(cmd)
+	return err
+}
+
+// InstallKubeSwiftCRDs applies KubeSwift's SwiftGuest and SwiftSeedProfile CRDs at
+// version and waits for them to be established. Server-side apply, because the
+// SwiftGuest CRD is larger than the last-applied annotation client-side apply keeps.
+func InstallKubeSwiftCRDs(version string) error {
+	args := make([]string, 0, 3+2*len(kubeSwiftCRDs))
+	args = append(args, "apply", "--server-side", "--force-conflicts")
+	names := make([]string, 0, len(kubeSwiftCRDs))
+	for _, crd := range kubeSwiftCRDs {
+		args = append(args, "-f", fmt.Sprintf(kubeSwiftCRDURLTmpl, version, crd))
+		group, plural, _ := strings.Cut(crd, "_")
+		names = append(names, "crd/"+plural+"."+group)
+	}
+	if _, err := Run(exec.Command("kubectl", args...)); err != nil {
+		return err
+	}
+	wait := append([]string{"wait", "--for", "condition=Established", "--timeout", "1m"}, names...)
+	_, err := Run(exec.Command("kubectl", wait...))
+	return err
 }
 
 // LoadImageToKindClusterWithName loads a local docker image to the kind cluster
