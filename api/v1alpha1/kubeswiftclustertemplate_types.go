@@ -44,5 +44,5 @@ type KubeSwiftClusterTemplateList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&KubeSwiftClusterTemplate{}, &KubeSwiftClusterTemplateList{})
+	objectTypes = append(objectTypes, &KubeSwiftClusterTemplate{}, &KubeSwiftClusterTemplateList{})
 }

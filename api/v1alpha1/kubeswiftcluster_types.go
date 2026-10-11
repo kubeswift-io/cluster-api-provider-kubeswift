@@ -151,5 +151,5 @@ type KubeSwiftClusterList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&KubeSwiftCluster{}, &KubeSwiftClusterList{})
+	objectTypes = append(objectTypes, &KubeSwiftCluster{}, &KubeSwiftClusterList{})
 }

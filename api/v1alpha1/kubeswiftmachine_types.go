@@ -230,5 +230,5 @@ type KubeSwiftMachineList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&KubeSwiftMachine{}, &KubeSwiftMachineList{})
+	objectTypes = append(objectTypes, &KubeSwiftMachine{}, &KubeSwiftMachineList{})
 }

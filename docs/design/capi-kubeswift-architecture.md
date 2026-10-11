@@ -1,7 +1,7 @@
 # cluster-api-provider-kubeswift — Architecture
 
 > Status: design anchor for the initial provider, updated for v0.3.0. **P1 is implemented** and builds/
-> tests green against Cluster API v1.13.4 (v1beta2 contract): the KubeSwiftCluster and
+> tests green against Cluster API v1.14.3 (v1beta2 contract): the KubeSwiftCluster and
 > KubeSwiftMachine reconcilers, the SwiftGuest backend, and the ClusterClass template
 > webhook. Reconcile flows below match the code. What remains cluster-gated is
 > end-to-end validation on a real Cluster API + KubeSwift management cluster (the

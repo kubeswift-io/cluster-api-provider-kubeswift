@@ -2,8 +2,10 @@
 # Cluster API contract it implements. clusterctl reads this to decide
 # compatibility with the installed Cluster API version.
 #
-# Grounded 2026-07-17 against Cluster API v1.13.4: this provider targets the
-# v1beta2 infrastructure-provider contract (types under api/core/v1beta2).
+# Grounded 2026-07-17 against Cluster API v1.13.4, rechecked 2026-10-11 against
+# v1.14.3: this provider targets the v1beta2 infrastructure-provider contract
+# (types under api/core/v1beta2, in the sigs.k8s.io/cluster-api/api module since
+# v1.14).
 # The v1beta1 contract is deprecated (compatibility removed tentatively April 2027).
 apiVersion: clusterctl.cluster.x-k8s.io/v1alpha3
 kind: Metadata

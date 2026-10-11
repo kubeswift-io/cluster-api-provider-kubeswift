@@ -4,7 +4,20 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.3.0] — 2026-10-11
+## [Unreleased]
+
+### Dependencies
+- **Built against Cluster API v1.14.3** (from v1.13.6), with the versions that
+  release pins: controller-runtime **v0.24.1** (from v0.23.3) and the Kubernetes
+  libraries **v0.36.3** (from v0.35.9); envtest now runs Kubernetes 1.36. The
+  contract is unchanged (v1beta2). Cluster API v1.14 moved its API types into their
+  own module, `sigs.k8s.io/cluster-api/api`, now required at `v1.14.3`; the import
+  paths are the same.
+- The API package registers its types with apimachinery's scheme builder instead
+  of controller-runtime's `scheme.Builder`, deprecated in v0.24. `AddToScheme` is
+  unchanged; the exported `SchemeBuilder` is gone.
+
+ — 2026-10-11
 
 Requires **KubeSwift v0.13.12 or later** (v0.15.0+ recommended), and KubeSwift's
 CRDs installed before the provider starts.
