@@ -4,7 +4,10 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v0.4.0] — 2026-10-11
+
+Built against **Cluster API v1.14.3** (v1beta2 contract). Requires KubeSwift v0.13.12
+or later (v0.15.0+ recommended), as v0.3.0.
 
 ### Fixed
 - **The e2e suite runs again.** It had failed on every run since July: it deployed
@@ -30,7 +33,26 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   of controller-runtime's `scheme.Builder`, deprecated in v0.24. `AddToScheme` is
   unchanged; the exported `SchemeBuilder` is gone.
 
- — 2026-10-11
+### Upgrade
+- **From v0.3.x:** upgrade in place, as for v0.3.0 (same `capks-system` namespace,
+  same v1beta2 contract):
+
+  ```bash
+  clusterctl upgrade plan
+  clusterctl upgrade apply --contract v1beta2
+  ```
+
+  or only this provider:
+
+  ```bash
+  clusterctl upgrade apply --infrastructure capks-system/kubeswift-io:v0.4.0
+  ```
+
+  Nothing changes on the running machines: no CRD schema, RBAC or behaviour change.
+- **Go API consumers** of `api/v1alpha1`: use `AddToScheme`; `SchemeBuilder` is no
+  longer exported.
+
+## [v0.3.0] — 2026-10-11
 
 Requires **KubeSwift v0.13.12 or later** (v0.15.0+ recommended), and KubeSwift's
 CRDs installed before the provider starts.

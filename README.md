@@ -34,11 +34,13 @@ keeps this codebase license-clean against KubeSwift's AGPL-3.0 core. See
 
 | Provider | Cluster API contract | Built against Cluster API | KubeSwift |
 |----------|----------------------|---------------------------|-----------|
+| v0.4.x | v1beta2 | v1.14 | v0.13.12 or later; v0.15.0+ recommended |
 | v0.3.x | v1beta2 | v1.13 | v0.13.12 or later; v0.15.0+ recommended |
 | v0.2.x | v1beta2 | v1.13 | v0.13.x–v0.16.x |
 
-The KubeSwift column for v0.3.x is checked against the KubeSwift v0.16.2 API (CRDs,
-admission and changelog), not yet by an end-to-end run on it.
+The KubeSwift column for v0.3.x and v0.4.x is checked against the KubeSwift v0.16.2 API (CRDs,
+admission and changelog), and the e2e suite runs against its CRDs; not yet against a
+live KubeSwift controller.
 
 ## Install (clusterctl)
 
@@ -80,7 +82,7 @@ Or upgrade only this provider. `upgrade apply` takes `namespace/provider:version
 the bare name `init` takes:
 
 ```sh
-clusterctl upgrade apply --infrastructure capks-system/kubeswift-io:v0.3.0
+clusterctl upgrade apply --infrastructure capks-system/kubeswift-io:v0.4.0
 ```
 
 Read the release's [CHANGELOG](CHANGELOG.md) entry first: it lists the minimum KubeSwift
