@@ -5,8 +5,45 @@ name: E2E Tests
 # CRDs, deploys the provider, and drives a Machine through it. KubeSwift's controller
 # is not installed — a runner cannot host its VMs — so the suite writes SwiftGuest
 # status itself; booting a real node still needs a KubeSwift management cluster.
+#
+# Runs on PRs and pushes to main that touch what the suite builds or exercises —
+# including go.mod, so dependency bumps (Dependabot's among them) are run end to end.
+# It was manual-only before, and broke unnoticed for three months.
 on:
+  pull_request:
+    paths:
+      - 'api/**'
+      - 'cmd/**'
+      - 'config/**'
+      - 'internal/**'
+      - 'test/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - 'Dockerfile'
+      - '.github/workflows/test-e2e.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'api/**'
+      - 'cmd/**'
+      - 'config/**'
+      - 'internal/**'
+      - 'test/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - 'Dockerfile'
+      - '.github/workflows/test-e2e.yml'
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push to a PR supersedes its running e2e; runs on main always finish.
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test-e2e:
