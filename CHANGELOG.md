@@ -51,9 +51,24 @@ CRDs installed before the provider starts.
   `golang.org/x/{sys,sync,tools}` and other minor/patch updates (#53).
 
 ### Upgrade
-- **From v0.2.x:** `clusterctl upgrade apply` in place (same namespace, same
+- **From v0.2.x:** upgrade in place (same `capks-system` namespace, same v1beta2
   contract). Upgrade KubeSwift to v0.13.12+ first, or new machines' seed profiles
-  are rejected.
+  are rejected. Then either upgrade every provider for the contract:
+
+  ```bash
+  clusterctl upgrade plan
+  clusterctl upgrade apply --contract v1beta2
+  ```
+
+  or only this one — `upgrade apply` takes `namespace/provider:version`, not the
+  bare `kubeswift-io` that `init` takes:
+
+  ```bash
+  clusterctl upgrade apply --infrastructure capks-system/kubeswift-io:v0.3.0
+  ```
+
+  Both need the `kubeswift-io` entry in `~/.cluster-api/clusterctl.yaml` (see the
+  README), as `init` did.
 - On the first reconcile after the upgrade, existing machines' SwiftSeedProfiles
   drop their inline `userData`, and nat machines' reported address changes from
   `192.168.99.x` to their launcher pod IP. Neither restarts a VM.

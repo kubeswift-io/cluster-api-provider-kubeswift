@@ -57,6 +57,35 @@ On a management cluster that already runs KubeSwift and cert-manager:
 clusterctl init --infrastructure kubeswift-io
 ```
 
+Keep the `providers` entry in `clusterctl.yaml` after installing: kubeswift-io is not in
+clusterctl's built-in provider list, so `clusterctl upgrade` also needs it to find new
+releases (without it, both `plan` and `apply` fail with *failed to get configuration for
+the InfrastructureProvider with name kubeswift-io*).
+
+## Upgrade (clusterctl)
+
+See what is installed and what each provider can move to:
+
+```sh
+clusterctl upgrade plan
+```
+
+Upgrade every provider to the latest release for the contract (what `plan` suggests):
+
+```sh
+clusterctl upgrade apply --contract v1beta2
+```
+
+Or upgrade only this provider. `upgrade apply` takes `namespace/provider:version`, not
+the bare name `init` takes:
+
+```sh
+clusterctl upgrade apply --infrastructure capks-system/kubeswift-io:v0.3.0
+```
+
+Read the release's [CHANGELOG](CHANGELOG.md) entry first: it lists the minimum KubeSwift
+version and anything that changes on upgrade.
+
 Generate a workload cluster. `mode: Service` (the default in the shipped template)
 makes the provider mint the control-plane endpoint as a Service, so no OVN or VIP is
 required:
