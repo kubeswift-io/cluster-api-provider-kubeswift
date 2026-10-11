@@ -26,9 +26,11 @@ type Request struct {
 	Cluster *clusterv1.Cluster
 	// CAPIMachine is the owning Cluster API Machine.
 	CAPIMachine *clusterv1.Machine
-	// BootstrapData is the cloud-init produced by the bootstrap provider, read from
-	// the Machine's bootstrap data secret.
-	BootstrapData []byte
+	// BootstrapDataSecretName names the Machine's bootstrap data secret (in
+	// GuestNamespace), whose BootstrapDataSecretKey holds the cloud-init produced by
+	// the bootstrap provider. The backend references the secret rather than copying
+	// its content, so the join credentials it carries stay in a Secret.
+	BootstrapDataSecretName string
 	// GuestNamespace is the namespace in which the backing KubeSwift resource is
 	// created.
 	GuestNamespace string
@@ -63,7 +65,16 @@ type Result struct {
 	Addresses []clusterv1.MachineAddress
 	// Requeue asks the caller to requeue, e.g. while waiting for the VM's IP.
 	Requeue bool
+	// WaitingReason and WaitingMessage, when set on an unprovisioned result, say why
+	// the backing resource is not usable yet. Unset, the caller reports a generic
+	// provisioning reason.
+	WaitingReason  string
+	WaitingMessage string
 }
+
+// BootstrapDataSecretKey is the key of a Cluster API bootstrap data secret that
+// holds the cloud-init.
+const BootstrapDataSecretKey = "value"
 
 // Backend reconciles the KubeSwift resource that backs a KubeSwiftMachine.
 type Backend interface {

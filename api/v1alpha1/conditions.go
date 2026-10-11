@@ -26,6 +26,11 @@ const (
 	WaitingForBootstrapDataReason = "WaitingForBootstrapData"
 	// VMProvisioningReason: the backing VM is being created or is not yet running.
 	VMProvisioningReason = "VMProvisioning"
+	// VMWaitingForReferencesReason: the backing VM cannot start because something it
+	// references (its image, guest class, seed profile, kernel or a data disk) is
+	// missing or not ready yet. KubeSwift waits rather than failing the VM, so this
+	// is also what a typo in a reference looks like.
+	VMWaitingForReferencesReason = "VMWaitingForReferences"
 	// VMProvisionedReason: the backing VM is running with an address.
 	VMProvisionedReason = "VMProvisioned"
 	// VMFailedReason: the backing VM reported a failed state.

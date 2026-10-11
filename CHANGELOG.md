@@ -4,6 +4,44 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Requires **KubeSwift v0.13.12 or later** (v0.15.0+ recommended), and KubeSwift's
+CRDs installed before the provider starts.
+
+### Changed
+- **The bootstrap cloud-init is no longer copied into the SwiftSeedProfile.** A
+  machine's SwiftSeedProfile now references the Cluster API bootstrap data secret
+  through `spec.userDataFrom.secretKeyRef` instead of carrying the cloud-init —
+  kubeadm join token and all — inline in `spec.userData`, where anyone able to read
+  SwiftSeedProfiles could see it and it was stored unencrypted. Profiles created by
+  an earlier release are converted in place on the next reconcile. Running guests
+  are not restarted: KubeSwift renders the seed only when it creates a launcher pod,
+  and the secret holds the same bytes. `userDataFrom` works from KubeSwift v0.13.12;
+  an older KubeSwift's CRD rejects the profile with `spec.userData: Required value`.
+- **A nat guest's machine address is its launcher pod IP.** Every nat launcher
+  hands its guest an address from the same pod-private range (192.168.99.10–20), so
+  KubeSwiftMachines reported duplicate `InternalIP`s that nothing outside the
+  launcher could reach. When KubeSwift marks `status.network.primaryIPScope: Pod`
+  (v0.15.0+), the machine now reports `status.network.podIP` — unique, and where the
+  guest's declared ports are DNAT'd. A `Network`-scope address (a bridge/NAD
+  `networkRef`) is reported as before, and so is every address on a KubeSwift
+  without the field. In the multi-node flavor this is the `mgmt` interface's pod IP;
+  the Node's own `InternalIP` still comes from kubelet `--node-ip`.
+- **The machine controller watches SwiftGuests.** A guest's status changes on its
+  own — it gets an address, waits on a reference, moves to a new launcher pod on a
+  restart or migration — and the provider used to notice only on its next poll or
+  never, once provisioned. Addresses and readiness now follow the guest. This makes
+  the SwiftGuest CRD a startup dependency of the provider.
+
+### Added
+- **A machine says why its VM is waiting for a reference.** Since KubeSwift v0.14.x
+  a guest whose image, class, seed profile, kernel or data disk is missing or not
+  ready stays `Pending` instead of going `Failed` — so a typo in `imageRef` used to
+  read as an endless "Waiting for the backing VM". The KubeSwiftMachine's `Ready`
+  condition now carries reason `VMWaitingForReferences` with the guest's `Resolved`
+  message, e.g. `SwiftImage not found: ubuntu-nobel`.
+
 ## [v0.2.1] — 2026-08-15
 
 ### Changed
