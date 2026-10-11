@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v0.3.0] — 2026-10-11
 
 Requires **KubeSwift v0.13.12 or later** (v0.15.0+ recommended), and KubeSwift's
 CRDs installed before the provider starts.
@@ -41,6 +41,22 @@ CRDs installed before the provider starts.
   read as an endless "Waiting for the backing VM". The KubeSwiftMachine's `Ready`
   condition now carries reason `VMWaitingForReferences` with the guest's `Resolved`
   message, e.g. `SwiftImage not found: ubuntu-nobel`.
+- **Compatibility table** in the README (provider ↔ Cluster API contract ↔
+  KubeSwift).
+
+### Dependencies
+- Go toolchain pinned to **1.26.9** (`toolchain go1.26.9`); the image builder is
+  pinned to `golang:1.26.9` instead of floating on `golang:1.27` (#54).
+- Kubernetes libraries **v0.35.9** (#50); gomega v1.44.0, OpenTelemetry v1.47.0,
+  `golang.org/x/{sys,sync,tools}` and other minor/patch updates (#53).
+
+### Upgrade
+- **From v0.2.x:** `clusterctl upgrade apply` in place (same namespace, same
+  contract). Upgrade KubeSwift to v0.13.12+ first, or new machines' seed profiles
+  are rejected.
+- On the first reconcile after the upgrade, existing machines' SwiftSeedProfiles
+  drop their inline `userData`, and nat machines' reported address changes from
+  `192.168.99.x` to their launcher pod IP. Neither restarts a VM.
 
 ## [v0.2.1] — 2026-08-15
 

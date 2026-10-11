@@ -30,6 +30,16 @@ The provider is Apache-2.0 and talks to KubeSwift only through the Kubernetes AP
 keeps this codebase license-clean against KubeSwift's AGPL-3.0 core. See
 [`docs/design/capi-kubeswift-architecture.md`](docs/design/capi-kubeswift-architecture.md).
 
+## Compatibility
+
+| Provider | Cluster API contract | Built against Cluster API | KubeSwift |
+|----------|----------------------|---------------------------|-----------|
+| v0.3.x | v1beta2 | v1.13 | v0.13.12 or later; v0.15.0+ recommended |
+| v0.2.x | v1beta2 | v1.13 | v0.13.x–v0.16.x |
+
+The KubeSwift column for v0.3.x is checked against the KubeSwift v0.16.2 API (CRDs,
+admission and changelog), not yet by an end-to-end run on it.
+
 ## Install (clusterctl)
 
 Add the provider to `~/.cluster-api/clusterctl.yaml`:
