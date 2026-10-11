@@ -1,6 +1,6 @@
 # cluster-api-provider-kubeswift — Architecture
 
-> Status: design anchor for the initial provider. **P1 is implemented** and builds/
+> Status: design anchor for the initial provider, updated for v0.3.0. **P1 is implemented** and builds/
 > tests green against Cluster API v1.13.4 (v1beta2 contract): the KubeSwiftCluster and
 > KubeSwiftMachine reconcilers, the SwiftGuest backend, and the ClusterClass template
 > webhook. Reconcile flows below match the code. What remains cluster-gated is
@@ -66,8 +66,13 @@ talks to KubeSwift only through the Kubernetes API:
 - `SwiftGuest` is created/read/deleted as `unstructured.Unstructured` (or a minimal
   locally-defined typed struct) at GVK `swift.kubeswift.io/v1alpha1`, kind
   `SwiftGuest`, via the controller-runtime client.
-- Any field shape the provider needs (e.g. `status.network.primaryIP`,
-  `status.phase`) is referenced by JSON path, not by importing the KubeSwift type.
+- Any field shape the provider needs (`status.phase`, `status.conditions[Resolved]`,
+  `status.network.primaryIP` / `primaryIPScope` / `podIP`) is referenced by JSON
+  path, not by importing the KubeSwift type. All of it is read in
+  `internal/backend/swiftguest.go`.
+
+Minimum KubeSwift: **v0.13.12** (the first release whose `SwiftSeedProfile` accepts
+`userDataFrom`); **v0.15.0+** recommended (`primaryIPScope` / `podIP`).
 
 This is also why the provider CRDs redefine small helpers (`APIEndpoint`,
 `MachineAddress`, `ObjectMeta`) locally rather than importing CAPI's `v1beta*`
@@ -107,18 +112,30 @@ All in group `infrastructure.cluster.x-k8s.io`, version `v1alpha1`.
 2. Wait for: the owning `Cluster` infra ready, and
    `Machine.spec.bootstrap.dataSecretName` populated (bootstrap provider produced
    cloud-init).
-3. Read the bootstrap Secret (cloud-init user-data).
-4. Render a `SwiftGuest` (unstructured) into `guestNamespace`:
-   - `imageRef` / guest class / resources / network from the KubeSwiftMachine spec.
-   - cloud-init user-data delivered as a NoCloud seed (via a `SwiftSeedProfile` or
-     inline seed), so the node runs Kubeadm and joins.
-   - set `--provider-id=kubeswift://<ns>/<name>` in the kubelet args **through the
-     bootstrap data** so the Node registers with a providerID matching this
-     KubeSwiftMachine (see Risks).
-   - owner ref → KubeSwiftMachine; label `cluster.x-k8s.io/cluster-name`.
-5. Watch the `SwiftGuest`. When it reports Running with an IP:
-   - set `spec.providerID`, `status.addresses`, `status.ready=true`, conditions.
-6. Finalizer: on delete, delete the `SwiftGuest`, then remove the finalizer.
+3. Check the bootstrap Secret exists and has its `value` key (the cloud-init).
+4. Ensure a NoCloud `SwiftSeedProfile` (`<machine>-seed`) whose
+   `userDataFrom.secretKeyRef` names that Secret — the cloud-init, join token
+   included, is never copied into the profile's spec. KubeSwift reads the Secret
+   when it creates a launcher pod. (Profiles from v0.2.x, which inlined
+   `userData`, are converted in place.)
+5. Render a `SwiftGuest` (unstructured) into `guestNamespace`:
+   - `imageRef` / guest class / network / storage / placement / GPU from the
+     KubeSwiftMachine spec; `seedProfileRef` → the profile above.
+   - labels `cluster.x-k8s.io/cluster-name` and
+     `infrastructure.cluster.x-k8s.io/kubeswiftmachine=<machine>`.
+6. Watch the `SwiftGuest` (mapped back by that label). While it is not Running
+   with an address, `Ready=False`: reason `VMWaitingForReferences` with the
+   guest's `Resolved` message when a reference is missing or not ready (KubeSwift
+   waits instead of failing the guest), else `VMProvisioning`. Phase `Failed` is
+   an error. Once Running with an address:
+   - set `spec.providerID`, `status.addresses`, `status.initialization.provisioned`,
+     `Ready=True`.
+   - the address is `status.network.podIP` when `primaryIPScope` is `Pod` (a nat
+     guest's own address is private to its launcher pod and repeats across
+     guests), else `status.network.primaryIP`.
+   - patch the workload `Node.spec.providerID` (see §7).
+7. Finalizer: on delete, delete the `SwiftGuest`, then its `SwiftSeedProfile`,
+   then remove the finalizer.
 
 ### KubeSwiftCluster controller
 1. Fetch the owning `Cluster`. If `paused`, requeue.
@@ -129,13 +146,15 @@ All in group `infrastructure.cluster.x-k8s.io`, version `v1alpha1`.
 ## 7. Bootstrap and providerID (the hard part)
 
 - **Bootstrap delivery:** the Kubeadm bootstrap provider writes cloud-init to a
-  Secret. The provider injects that into the VM as NoCloud user-data. KubeSwift's
-  existing cloud-init / `SwiftSeedProfile` path is the delivery mechanism.
+  Secret. The provider's `SwiftSeedProfile` references that Secret
+  (`userDataFrom`), and KubeSwift renders it into the VM's NoCloud seed.
 - **providerID match:** CAPI links `InfraMachine.spec.providerID` to a workload
   `Node.spec.providerID`. For the match to happen, the node's kubelet must start
-  with `--provider-id=kubeswift://<ns>/<name>`. We compute that ID at render time
-  and inject it via the bootstrap config (KubeadmConfig `kubeletExtraArgs`, or a
-  cloud-init file). No in-cluster cloud-provider is required for whole-VM nodes.
+  with `--provider-id=kubeswift://<ns>/<name>`, or the ID must be set afterwards.
+  As implemented, the kubelet registers with no providerID and the machine
+  controller patches the workload Node's `spec.providerID` directly
+  (`internal/controller/workload_node.go`) — more reliable than a cloud-init
+  drop-in. No in-cluster cloud-provider is required for whole-VM nodes.
 
 ## 8. Phases
 

@@ -37,6 +37,11 @@ multi-node cluster needs Node IPs that are both unique and mutually reachable.
 
 ### Model A — pod-IP node addressing (no extra L2 substrate)
 
+> Since v0.3.0 the provider reports a nat guest's launcher pod IP as the
+> KubeSwiftMachine's `InternalIP` (from `SwiftGuest.status.network.podIP` when
+> `primaryIPScope` is `Pod`). That covers the *machine* address only; the Node's
+> `InternalIP` is still the kubelet's, so the rest of this model is not implemented.
+
 Advertise each Node's `InternalIP` as its **launcher pod IP** (already routable across
 nodes by the management CNI), and reach the VM through the pod:
 
