@@ -2,6 +2,8 @@ module github.com/kubeswift-io/cluster-api-provider-kubeswift
 
 go 1.26.0
 
+toolchain go1.26.9
+
 godebug default=go1.23
 
 require (
