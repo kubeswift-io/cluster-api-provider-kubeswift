@@ -17,67 +17,41 @@ import (
 // namespace where the project is deployed in
 const namespace = "capks-system"
 
+// Resource names below must match what config/default generates: namePrefix
+// "capks-" (#23). They still carried the pre-#23 "cluster-api-provider-kubeswift-"
+// prefix, so every spec past the pod check failed on a NotFound.
+
+// controllerDeploymentName is the provider's Deployment.
+const controllerDeploymentName = "capks-controller-manager"
+
 // serviceAccountName created for the project
-const serviceAccountName = "cluster-api-provider-kubeswift-controller-manager"
+const serviceAccountName = "capks-controller-manager"
 
 // metricsServiceName is the name of the metrics service of the project.
-//
-// This must match what config/default actually generates. It did not: the scaffolded
-// name carried a "-controller-manager" segment the kustomization does not produce, so
-// the metrics spec failed on a NotFound service in every run — the second of two
-// reasons this suite never went green.
-const metricsServiceName = "cluster-api-provider-kubeswift-metrics-service"
+const metricsServiceName = "capks-metrics-service"
+
+// metricsReaderRoleName is the ClusterRole granting read access to /metrics.
+const metricsReaderRoleName = "capks-metrics-reader"
+
+// webhookConfigurationName is the provider's ValidatingWebhookConfiguration.
+const webhookConfigurationName = "capks-validating-webhook-configuration"
 
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
-const metricsRoleBindingName = "cluster-api-provider-kubeswift-metrics-binding"
+const metricsRoleBindingName = "capks-metrics-binding"
 
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
 
-	// Before running the tests, set up the environment by creating the namespace,
-	// enforce the restricted security policy to the namespace, installing CRDs,
-	// and deploying the controller.
-	BeforeAll(func() {
-		By("creating manager namespace")
-		cmd := exec.Command("kubectl", "create", "ns", namespace)
-		_, err := utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred(), "Failed to create namespace")
-
-		By("labeling the namespace to enforce the restricted security policy")
-		cmd = exec.Command("kubectl", "label", "--overwrite", "ns", namespace,
-			"pod-security.kubernetes.io/enforce=restricted")
-		_, err = utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred(), "Failed to label namespace with restricted policy")
-
-		By("installing CRDs")
-		cmd = exec.Command("make", "install")
-		_, err = utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
-
-		By("deploying the controller-manager")
-		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage))
-		_, err = utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
-	})
-
-	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
-	// and deleting the namespace.
+	// The suite deploys the provider (BeforeSuite) and removes it (AfterSuite); these
+	// specs only clean up what they create.
 	AfterAll(func() {
 		By("cleaning up the curl pod for metrics")
-		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace)
-		_, _ = utils.Run(cmd)
+		_, _ = utils.Run(exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace,
+			"--ignore-not-found"))
 
-		By("undeploying the controller-manager")
-		cmd = exec.Command("make", "undeploy")
-		_, _ = utils.Run(cmd)
-
-		By("uninstalling CRDs")
-		cmd = exec.Command("make", "uninstall")
-		_, _ = utils.Run(cmd)
-
-		By("removing manager namespace")
-		cmd = exec.Command("kubectl", "delete", "ns", namespace)
-		_, _ = utils.Run(cmd)
+		By("removing the metrics ClusterRoleBinding")
+		_, _ = utils.Run(exec.Command("kubectl", "delete", "clusterrolebinding", metricsRoleBindingName,
+			"--ignore-not-found"))
 	})
 
 	// After each test, check for failures and collect logs, events,
@@ -168,7 +142,7 @@ var _ = Describe("Manager", Ordered, func() {
 				"--ignore-not-found")
 			_, _ = utils.Run(cmd)
 			cmd = exec.Command("kubectl", "create", "clusterrolebinding", metricsRoleBindingName,
-				"--clusterrole=cluster-api-provider-kubeswift-metrics-reader",
+				"--clusterrole="+metricsReaderRoleName,
 				fmt.Sprintf("--serviceaccount=%s:%s", namespace, serviceAccountName),
 			)
 			_, err := utils.Run(cmd)
@@ -266,7 +240,7 @@ var _ = Describe("Manager", Ordered, func() {
 			verifyCAInjection := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get",
 					"validatingwebhookconfigurations.admissionregistration.k8s.io",
-					"cluster-api-provider-kubeswift-validating-webhook-configuration",
+					webhookConfigurationName,
 					"-o", "go-template={{ range .webhooks }}{{ .clientConfig.caBundle }}{{ end }}")
 				vwhOutput, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())

@@ -1,9 +1,10 @@
 name: E2E Tests
 
-# Manual only. The scaffolded Kind-based e2e is a placeholder; meaningful e2e for
-# this provider needs a management cluster with Cluster API + KubeSwift installed
-# (see docs/design/capi-kubeswift-architecture.md), which a bare Kind runner cannot
-# provide. Run on demand until the real e2e harness lands.
+# Kind-based e2e: `make test-e2e` creates a Kind cluster, installs Cluster API (the
+# version go.mod pins) with clusterctl and KubeSwift's SwiftGuest/SwiftSeedProfile
+# CRDs, deploys the provider, and drives a Machine through it. KubeSwift's controller
+# is not installed — a runner cannot host its VMs — so the suite writes SwiftGuest
+# status itself; booting a real node still needs a KubeSwift management cluster.
 on:
   workflow_dispatch:
 
@@ -29,10 +30,5 @@ jobs:
       - name: Verify kind installation
         run: kind version
 
-      - name: Create kind cluster
-        run: kind create cluster
-
       - name: Running Test e2e
-        run: |
-          go mod tidy
-          make test-e2e
+        run: make test-e2e

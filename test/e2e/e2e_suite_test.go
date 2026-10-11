@@ -12,24 +12,35 @@ import (
 	"github.com/kubeswift-io/cluster-api-provider-kubeswift/test/utils"
 )
 
+// Run the suite with `make test-e2e`, which creates the Kind cluster and sets these.
 var (
-	// Optional Environment Variables:
-	// - CERT_MANAGER_INSTALL_SKIP=true: Skips CertManager installation during test setup.
-	// These variables are useful if CertManager is already installed, avoiding
-	// re-installation and conflicts.
-	skipCertManagerInstall = os.Getenv("CERT_MANAGER_INSTALL_SKIP") == "true"
-	// isCertManagerAlreadyInstalled will be set true when CertManager CRDs be found on the cluster
-	isCertManagerAlreadyInstalled = false
+	// kindCluster is the Kind cluster the suite runs in; the suite refuses any other
+	// kubectl context.
+	kindCluster = envOr("KIND_CLUSTER", "capks-test-e2e")
+	// clusterctl is the clusterctl binary used to install Cluster API.
+	clusterctl = envOr("CLUSTERCTL", "clusterctl")
+	// capiVersion is the Cluster API release installed: the one this provider is
+	// built against.
+	capiVersion = os.Getenv("CAPI_VERSION")
+	// kubeSwiftVersion is the KubeSwift release whose CRDs are installed.
+	kubeSwiftVersion = envOr("KUBESWIFT_VERSION", "v0.16.2")
 
 	// projectImage is the name of the image which will be build and loaded
 	// with the code source changes to be tested.
 	projectImage = "example.com/cluster-api-provider-kubeswift:v0.0.1"
 )
 
-// TestE2E runs the end-to-end (e2e) test suite for the project. These tests execute in an isolated,
-// temporary environment to validate project changes with the purposed to be used in CI jobs.
-// The default setup requires Kind, builds/loads the Manager Docker image locally, and installs
-// CertManager.
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// TestE2E runs the end-to-end (e2e) test suite. It runs in a disposable Kind cluster
+// with Cluster API and KubeSwift's CRDs installed (not KubeSwift's controller: Kind
+// cannot run VMs, so the specs write SwiftGuest status the way KubeSwift would), builds
+// and loads the manager image, and deploys the provider.
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
 	_, _ = fmt.Fprintf(GinkgoWriter, "Starting cluster-api-provider-kubeswift integration test suite\n")
@@ -37,37 +48,56 @@ func TestE2E(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
+	By("checking the suite is pointed at its own Kind cluster")
+	Expect(utils.RequireKindContext(kindCluster)).To(Succeed())
+	Expect(capiVersion).NotTo(BeEmpty(), "CAPI_VERSION is not set; run the suite with `make test-e2e`")
+
 	By("building the manager(Operator) image")
 	cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
 	_, err := utils.Run(cmd)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager(Operator) image")
 
-	// TODO(user): If you want to change the e2e test vendor from Kind, ensure the image is
-	// built and available before running the tests. Also, remove the following block.
 	By("loading the manager(Operator) image on Kind")
 	err = utils.LoadImageToKindClusterWithName(projectImage)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the manager(Operator) image into Kind")
 
-	// The tests-e2e are intended to run on a temporary cluster that is created and destroyed for testing.
-	// To prevent errors when tests run in environments with CertManager already installed,
-	// we check for its presence before execution.
-	// Setup CertManager before the suite if not skipped and if not already installed
-	if !skipCertManagerInstall {
-		By("checking if cert manager is installed already")
-		isCertManagerAlreadyInstalled = utils.IsCertManagerCRDsInstalled()
-		if !isCertManagerAlreadyInstalled {
-			_, _ = fmt.Fprintf(GinkgoWriter, "Installing CertManager...\n")
-			Expect(utils.InstallCertManager()).To(Succeed(), "Failed to install CertManager")
-		} else {
-			_, _ = fmt.Fprintf(GinkgoWriter, "WARNING: CertManager is already installed. Skipping installation...\n")
-		}
-	}
+	By("installing Cluster API " + capiVersion + " (and cert-manager) with clusterctl")
+	Expect(utils.InstallClusterAPI(clusterctl, capiVersion)).To(Succeed(), "Failed to install Cluster API")
+
+	// Before the provider starts: it watches SwiftGuests, so without the CRD its
+	// manager cannot start.
+	By("installing the KubeSwift " + kubeSwiftVersion + " CRDs")
+	Expect(utils.InstallKubeSwiftCRDs(kubeSwiftVersion)).To(Succeed(), "Failed to install the KubeSwift CRDs")
+
+	By("creating manager namespace")
+	cmd = exec.Command("kubectl", "create", "ns", namespace)
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create namespace")
+
+	By("labeling the namespace to enforce the restricted security policy")
+	cmd = exec.Command("kubectl", "label", "--overwrite", "ns", namespace,
+		"pod-security.kubernetes.io/enforce=restricted")
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to label namespace with restricted policy")
+
+	By("deploying the controller-manager")
+	cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage))
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
+
+	By("waiting for the controller-manager to be available")
+	cmd = exec.Command("kubectl", "rollout", "status", "deployment/"+controllerDeploymentName,
+		"-n", namespace, "--timeout", "3m")
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "The controller-manager did not become available")
 })
 
+// AfterSuite removes the provider; Cluster API, cert-manager and the KubeSwift CRDs go
+// with the Kind cluster (`make cleanup-test-e2e`).
 var _ = AfterSuite(func() {
-	// Teardown CertManager after the suite if not skipped and if it was not already installed
-	if !skipCertManagerInstall && !isCertManagerAlreadyInstalled {
-		_, _ = fmt.Fprintf(GinkgoWriter, "Uninstalling CertManager...\n")
-		utils.UninstallCertManager()
-	}
+	By("undeploying the controller-manager")
+	_, _ = utils.Run(exec.Command("make", "undeploy", "ignore-not-found=true"))
+
+	By("removing manager namespace")
+	_, _ = utils.Run(exec.Command("kubectl", "delete", "ns", namespace, "--ignore-not-found"))
 })

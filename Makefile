@@ -61,21 +61,39 @@ vet: ## Run go vet against code.
 test: manifests generate fmt vet setup-envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
-# TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
-# The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
-# CertManager is installed by default; skip with:
-# - CERT_MANAGER_INSTALL_SKIP=true
-.PHONY: test-e2e
-test-e2e: manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.
+# The e2e suite runs in its own Kind cluster, KIND_CLUSTER, reached through its own
+# kubeconfig file, E2E_KUBECONFIG — never the current kubectl context. The suite runs
+# `clusterctl init` and `make undeploy` against whatever cluster it is given, so it
+# must not be able to reach a real management cluster by accident.
+#
+# It installs Cluster API (CAPI_VERSION, the version this module is built against) with
+# clusterctl, which brings cert-manager, and KubeSwift's SwiftGuest and SwiftSeedProfile
+# CRDs (KUBESWIFT_VERSION) without KubeSwift's controller: Kind cannot run VMs, so the
+# suite plays KubeSwift's part by writing SwiftGuest status itself.
+KIND_CLUSTER ?= capks-test-e2e
+E2E_KUBECONFIG ?= $(LOCALBIN)/$(KIND_CLUSTER).kubeconfig
+KUBESWIFT_VERSION ?= v0.16.2
+
+.PHONY: setup-test-e2e
+setup-test-e2e: $(LOCALBIN) ## Create the e2e Kind cluster (if absent) and write its kubeconfig to E2E_KUBECONFIG.
 	@command -v $(KIND) >/dev/null 2>&1 || { \
 		echo "Kind is not installed. Please install Kind manually."; \
 		exit 1; \
 	}
-	@$(KIND) get clusters | grep -q 'kind' || { \
-		echo "No Kind cluster is running. Please start a Kind cluster before running the e2e tests."; \
-		exit 1; \
-	}
-	go test ./test/e2e/ -v -ginkgo.v
+	@$(KIND) get clusters 2>/dev/null | grep -qx '$(KIND_CLUSTER)' || \
+		$(KIND) create cluster --name $(KIND_CLUSTER) --kubeconfig $(E2E_KUBECONFIG)
+	@$(KIND) export kubeconfig --name $(KIND_CLUSTER) --kubeconfig $(E2E_KUBECONFIG)
+
+.PHONY: test-e2e
+test-e2e: setup-test-e2e manifests generate fmt vet clusterctl ## Run the e2e tests in the e2e Kind cluster (created if absent).
+	KUBECONFIG=$(E2E_KUBECONFIG) KIND_CLUSTER=$(KIND_CLUSTER) CLUSTERCTL=$(CLUSTERCTL) \
+		CAPI_VERSION=$(CLUSTERCTL_VERSION) KUBESWIFT_VERSION=$(KUBESWIFT_VERSION) \
+		go test ./test/e2e/ -v -ginkgo.v -timeout 30m
+
+.PHONY: cleanup-test-e2e
+cleanup-test-e2e: ## Delete the e2e Kind cluster and its kubeconfig.
+	@$(KIND) delete cluster --name $(KIND_CLUSTER) --kubeconfig $(E2E_KUBECONFIG)
+	@rm -f $(E2E_KUBECONFIG)
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
@@ -170,6 +188,7 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
+CLUSTERCTL ?= $(LOCALBIN)/clusterctl
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.6.0
@@ -179,6 +198,8 @@ ENVTEST_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/controller
 #ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
 GOLANGCI_LINT_VERSION ?= v2.12.2
+#CLUSTERCTL_VERSION follows the Cluster API module this provider is built against.
+CLUSTERCTL_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/cluster-api)
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -207,6 +228,20 @@ $(ENVTEST): $(LOCALBIN)
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
 	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
+
+# clusterctl is downloaded, not built: `go install` refuses a module whose go.mod has
+# replace directives, and Cluster API's does (sigs.k8s.io/cluster-api/api => ./api).
+.PHONY: clusterctl
+clusterctl: $(CLUSTERCTL) ## Download clusterctl locally if necessary.
+$(CLUSTERCTL): $(LOCALBIN)
+	@[ -f "$(CLUSTERCTL)-$(CLUSTERCTL_VERSION)" ] || { \
+	set -e; \
+	echo "Downloading clusterctl $(CLUSTERCTL_VERSION)"; \
+	curl -sSfL -o "$(CLUSTERCTL)-$(CLUSTERCTL_VERSION)" \
+		"https://github.com/kubernetes-sigs/cluster-api/releases/download/$(CLUSTERCTL_VERSION)/clusterctl-$$(go env GOOS)-$$(go env GOARCH)"; \
+	chmod +x "$(CLUSTERCTL)-$(CLUSTERCTL_VERSION)"; \
+	} ;\
+	ln -sf "$(CLUSTERCTL)-$(CLUSTERCTL_VERSION)" "$(CLUSTERCTL)"
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

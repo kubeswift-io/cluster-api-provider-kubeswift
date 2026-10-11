@@ -140,6 +140,13 @@ make test                 # unit tests (envtest)
 make build-installer      # render dist/install.yaml (the release components manifest)
 ```
 
+The e2e suite (`make test-e2e`) runs in its own Kind cluster, `capks-test-e2e`, through
+its own kubeconfig (`bin/capks-test-e2e.kubeconfig`), so it never touches your current
+kubectl context. It installs Cluster API with clusterctl and KubeSwift's CRDs — not
+KubeSwift itself, so the suite plays KubeSwift's part by writing SwiftGuest status —
+then deploys the provider and drives a Machine through it. Remove the cluster with
+`make cleanup-test-e2e`. Needs Docker and Kind.
+
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
