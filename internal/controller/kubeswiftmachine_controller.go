@@ -20,6 +20,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	infrav1 "github.com/kubeswift-io/cluster-api-provider-kubeswift/api/v1alpha1"
 	"github.com/kubeswift-io/cluster-api-provider-kubeswift/internal/backend"
@@ -119,8 +120,7 @@ func (r *KubeSwiftMachineReconciler) reconcileNormal(
 		return ctrl.Result{}, nil
 	}
 
-	bootstrapData, err := r.bootstrapData(ctx, machine)
-	if err != nil {
+	if err := r.checkBootstrapData(ctx, machine); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -133,13 +133,13 @@ func (r *KubeSwiftMachineReconciler) reconcileNormal(
 	}
 
 	result, err := b.Reconcile(ctx, backend.Request{
-		Machine:              ksm,
-		Cluster:              cluster,
-		CAPIMachine:          machine,
-		BootstrapData:        bootstrapData,
-		GuestNamespace:       guestNamespace,
-		ProviderID:           providerID,
-		ControlPlaneExposure: exposure,
+		Machine:                 ksm,
+		Cluster:                 cluster,
+		CAPIMachine:             machine,
+		BootstrapDataSecretName: *machine.Spec.Bootstrap.DataSecretName,
+		GuestNamespace:          guestNamespace,
+		ProviderID:              providerID,
+		ControlPlaneExposure:    exposure,
 	})
 	if err != nil {
 		notReady(ksm, infrav1.VMFailedReason, err.Error())
@@ -147,7 +147,11 @@ func (r *KubeSwiftMachineReconciler) reconcileNormal(
 	}
 
 	if !result.Provisioned {
-		notReady(ksm, infrav1.VMProvisioningReason, "Waiting for the backing VM to be running with an address")
+		reason, message := infrav1.VMProvisioningReason, "Waiting for the backing VM to be running with an address"
+		if result.WaitingReason != "" {
+			reason, message = result.WaitingReason, result.WaitingMessage
+		}
+		notReady(ksm, reason, message)
 		return ctrl.Result{RequeueAfter: machineRequeueAfter}, nil
 	}
 
@@ -194,18 +198,19 @@ func (r *KubeSwiftMachineReconciler) reconcileDelete(
 	return ctrl.Result{}, nil
 }
 
-// bootstrapData reads the cloud-init from the Machine's bootstrap data secret.
-func (r *KubeSwiftMachineReconciler) bootstrapData(ctx context.Context, machine *clusterv1.Machine) ([]byte, error) {
+// checkBootstrapData checks that the Machine's bootstrap data secret exists and holds
+// the cloud-init. The backend references the secret rather than reading it, so a
+// missing key is caught here instead of leaving the VM without its cloud-init.
+func (r *KubeSwiftMachineReconciler) checkBootstrapData(ctx context.Context, machine *clusterv1.Machine) error {
 	secret := &corev1.Secret{}
 	key := types.NamespacedName{Namespace: machine.Namespace, Name: *machine.Spec.Bootstrap.DataSecretName}
 	if err := r.Get(ctx, key, secret); err != nil {
-		return nil, fmt.Errorf("reading bootstrap data secret %s: %w", key, err)
+		return fmt.Errorf("reading bootstrap data secret %s: %w", key, err)
 	}
-	data, ok := secret.Data["value"]
-	if !ok {
-		return nil, fmt.Errorf("bootstrap data secret %s has no 'value' key", key)
+	if _, ok := secret.Data[backend.BootstrapDataSecretKey]; !ok {
+		return fmt.Errorf("bootstrap data secret %s has no %q key", key, backend.BootstrapDataSecretKey)
 	}
-	return data, nil
+	return nil
 }
 
 // controlPlaneExposure returns the API-server exposure to hand the backend for a
@@ -246,6 +251,17 @@ func notReady(ksm *infrav1.KubeSwiftMachine, reason, message string) {
 	})
 }
 
+// swiftGuestToKubeSwiftMachine maps a SwiftGuest to the KubeSwiftMachine it backs,
+// named by the label the backend stamps on it. Guests not created by this provider
+// carry no label and map to nothing.
+func swiftGuestToKubeSwiftMachine(_ context.Context, o client.Object) []reconcile.Request {
+	name := o.GetLabels()[backend.MachineLabelKey]
+	if name == "" {
+		return nil
+	}
+	return []reconcile.Request{{NamespacedName: types.NamespacedName{Namespace: o.GetNamespace(), Name: name}}}
+}
+
 func backendFor(t infrav1.MachineBackendType, c client.Client) (backend.Backend, error) {
 	switch t {
 	case infrav1.SwiftGuestBackendType:
@@ -264,6 +280,13 @@ func (r *KubeSwiftMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			handler.EnqueueRequestsFromMapFunc(
 				util.MachineToInfrastructureMapFunc(infrav1.GroupVersion.WithKind("KubeSwiftMachine")),
 			),
+		).
+		// A SwiftGuest's status moves on its own — it starts, gets an address, waits
+		// on a reference, and changes launcher pod (and pod IP) on a restart or a
+		// migration — so watch it rather than only polling until first provisioned.
+		Watches(
+			backend.NewSwiftGuestObject(),
+			handler.EnqueueRequestsFromMapFunc(swiftGuestToKubeSwiftMachine),
 		).
 		Named("kubeswiftmachine").
 		Complete(r)

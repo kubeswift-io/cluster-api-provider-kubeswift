@@ -59,7 +59,8 @@ clusterctl generate cluster my-cluster \
   --worker-machine-count 2 | kubectl apply -f -
 ```
 
-Prerequisites on the management cluster: KubeSwift, cert-manager, a Ready `SwiftImage`
+Prerequisites on the management cluster: KubeSwift (v0.13.12 or later, v0.15.0+
+recommended; install it before the provider, which watches its CRDs), cert-manager, a Ready `SwiftImage`
 (the template defaults to `ubuntu-noble`), and cluster-scoped `SwiftGuestClass`es
 (`capi-controlplane`, `capi-worker`). Install a CNI on the workload cluster once its
 control plane is up. Workload pod/service CIDRs must not overlap the management

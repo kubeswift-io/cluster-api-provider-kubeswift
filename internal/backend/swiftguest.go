@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -24,6 +26,13 @@ var (
 		Group: "seed.kubeswift.io", Version: "v1alpha1", Kind: "SwiftSeedProfile",
 	}
 )
+
+// MachineLabelKey labels each KubeSwift resource the SwiftGuest backend creates with
+// the name of the KubeSwiftMachine it backs (in the same namespace).
+const MachineLabelKey = "infrastructure.cluster.x-k8s.io/kubeswiftmachine"
+
+// NewSwiftGuestObject returns an empty SwiftGuest, e.g. for a controller to watch.
+func NewSwiftGuestObject() *unstructured.Unstructured { return newUnstructured(swiftGuestGVK) }
 
 // SwiftGuestBackend backs a KubeSwiftMachine with a SwiftGuest VM.
 type SwiftGuestBackend struct {
@@ -112,22 +121,61 @@ func (b *SwiftGuestBackend) Reconcile(ctx context.Context, req Request) (Result,
 	}
 
 	phase, _, _ := unstructured.NestedString(guest.Object, "status", "phase")
-	primaryIP, _, _ := unstructured.NestedString(guest.Object, "status", "network", "primaryIP")
-
-	switch {
-	case phase == "Failed":
+	if phase == "Failed" {
 		return Result{}, fmt.Errorf("SwiftGuest %s/%s reported phase Failed", req.GuestNamespace, req.Machine.Name)
-	case phase != "Running" || primaryIP == "":
-		// VM not running yet, or its IP not yet discovered — requeue.
-		return Result{Requeue: true}, nil
-	default:
-		return Result{
-			Provisioned: true,
-			Addresses: []clusterv1.MachineAddress{
-				{Type: clusterv1.MachineInternalIP, Address: primaryIP},
-			},
-		}, nil
 	}
+	addresses := guestAddresses(guest)
+	if phase != "Running" || len(addresses) == 0 {
+		// VM not running yet, or its address not yet discovered — requeue.
+		res := Result{Requeue: true}
+		if msg, waiting := unresolvedMessage(guest); waiting {
+			res.WaitingReason = infrav1.VMWaitingForReferencesReason
+			res.WaitingMessage = fmt.Sprintf("SwiftGuest %s/%s is waiting for its references: %s",
+				req.GuestNamespace, req.Machine.Name, msg)
+		}
+		return res, nil
+	}
+	return Result{Provisioned: true, Addresses: addresses}, nil
+}
+
+// guestAddresses returns the address a running SwiftGuest is reachable at from
+// outside its launcher pod, or nil until it has one. A nat guest's primaryIP is
+// private to its launcher (every nat launcher hands out the same 192.168.99.x
+// range), so it is replaced by the launcher pod's IP, where the guest's declared
+// ports are DNAT'd and which is unique in the cluster. primaryIP is still what
+// says the VM is up: it is set once the guest has leased its address. KubeSwift
+// before v0.15.0 reports no primaryIPScope, and its primaryIP is used as-is.
+func guestAddresses(guest *unstructured.Unstructured) []clusterv1.MachineAddress {
+	primaryIP, _, _ := unstructured.NestedString(guest.Object, "status", "network", "primaryIP")
+	if primaryIP == "" {
+		return nil
+	}
+	address := primaryIP
+	if scope, _, _ := unstructured.NestedString(guest.Object, "status", "network", "primaryIPScope"); scope == primaryIPScopePod {
+		address, _, _ = unstructured.NestedString(guest.Object, "status", "network", "podIP")
+		if address == "" {
+			return nil
+		}
+	}
+	return []clusterv1.MachineAddress{{Type: clusterv1.MachineInternalIP, Address: address}}
+}
+
+// unresolvedMessage reports whether the SwiftGuest is held back by its Resolved
+// condition (a reference that is missing or not ready) and, if so, why.
+func unresolvedMessage(guest *unstructured.Unstructured) (string, bool) {
+	conds, _, _ := unstructured.NestedSlice(guest.Object, "status", "conditions")
+	for _, c := range conds {
+		cond, ok := c.(map[string]interface{})
+		if !ok || cond["type"] != resolvedCondition || cond["status"] != string(metav1.ConditionFalse) {
+			continue
+		}
+		msg, _ := cond["message"].(string)
+		if msg == "" {
+			msg, _ = cond["reason"].(string)
+		}
+		return msg, true
+	}
+	return "", false
 }
 
 // Delete removes the SwiftGuest, then (once it is gone) the SwiftSeedProfile. It
@@ -156,13 +204,28 @@ func (b *SwiftGuestBackend) Delete(ctx context.Context, req Request) (bool, erro
 	return true, nil
 }
 
-// ensureSeedProfile creates the NoCloud SwiftSeedProfile (cloud-init) if absent.
+// ensureSeedProfile creates the NoCloud SwiftSeedProfile (cloud-init) if absent, and
+// moves one created before userDataFrom off its inline userData.
 func (b *SwiftGuestBackend) ensureSeedProfile(ctx context.Context, req Request) error {
 	name := seedName(req.Machine.Name)
+	desired := seedProfileSpec(req)
 	existing := newUnstructured(swiftSeedProfileGVK)
 	err := b.Client.Get(ctx, types.NamespacedName{Namespace: req.GuestNamespace, Name: name}, existing)
 	if err == nil {
-		return nil
+		// A profile from an earlier release carries the bootstrap cloud-init — join
+		// token included — inline in its spec. Point it at the secret instead. This
+		// touches no running guest: KubeSwift renders the seed only when it creates a
+		// launcher and does not watch profiles, and the secret holds the same bytes.
+		userData, _, _ := unstructured.NestedString(existing.Object, "spec", "userData")
+		userDataFrom, _, _ := unstructured.NestedMap(existing.Object, "spec", "userDataFrom")
+		if userData == "" && apiequality.Semantic.DeepEqual(userDataFrom, desired["userDataFrom"]) {
+			return nil
+		}
+		unstructured.RemoveNestedField(existing.Object, "spec", "userData")
+		if err := unstructured.SetNestedField(existing.Object, desired["userDataFrom"], "spec", "userDataFrom"); err != nil {
+			return err
+		}
+		return b.Client.Update(ctx, existing)
 	}
 	if !apierrors.IsNotFound(err) {
 		return err
@@ -172,16 +235,28 @@ func (b *SwiftGuestBackend) ensureSeedProfile(ctx context.Context, req Request) 
 	seed.SetNamespace(req.GuestNamespace)
 	seed.SetName(name)
 	setKubeSwiftLabels(seed, req)
-	seed.Object["spec"] = map[string]interface{}{
+	seed.Object["spec"] = desired
+	return b.Client.Create(ctx, seed)
+}
+
+// seedProfileSpec renders a machine's SwiftSeedProfile spec (pure; no client).
+func seedProfileSpec(req Request) map[string]interface{} {
+	return map[string]interface{}{
 		"datasource": "NoCloud",
-		// The Cluster API bootstrap cloud-init is used verbatim. The kubelet provider-id
-		// is NOT injected here — the controller patches the workload Node's providerID
-		// directly (reliable; see internal/controller/workload_node.go), which supersedes
-		// the fragile cloud-init drop-in path.
-		"userData": string(req.BootstrapData),
+		// The Cluster API bootstrap cloud-init is used verbatim, read by KubeSwift from
+		// the bootstrap data secret (userDataFrom needs KubeSwift v0.13.12+) so the join
+		// credentials it carries never sit in a SwiftSeedProfile spec. The kubelet
+		// provider-id is NOT injected here — the controller patches the workload Node's
+		// providerID directly (reliable; see internal/controller/workload_node.go),
+		// which supersedes the fragile cloud-init drop-in path.
+		"userDataFrom": map[string]interface{}{
+			"secretKeyRef": map[string]interface{}{
+				nameField: req.BootstrapDataSecretName,
+				"key":     BootstrapDataSecretKey,
+			},
+		},
 		"metaData": fmt.Sprintf("instance-id: %s\nlocal-hostname: %s\n", req.Machine.Name, req.Machine.Name),
 	}
-	return b.Client.Create(ctx, seed)
 }
 
 // ensureSwiftGuest creates the SwiftGuest VM if absent and returns the current object.
@@ -313,6 +388,14 @@ const nameField = "name"
 // the primary interface under Service-backed endpoint provisioning.
 const natBinding = "nat"
 
+// resolvedCondition is the SwiftGuest condition that says whether everything the
+// guest references exists and is ready (KubeSwift waits on it rather than failing).
+const resolvedCondition = "Resolved"
+
+// primaryIPScopePod is the SwiftGuest status.network.primaryIPScope of an address
+// private to the guest's launcher pod (KubeSwift v0.15.0+).
+const primaryIPScopePod = "Pod"
+
 // localRef renders a corev1.LocalObjectReference as an unstructured map (KubeSwift
 // imageRef/guestClassRef/seedProfileRef are LocalObjectReferences — name only).
 func localRef(name string) map[string]interface{} {
@@ -333,6 +416,6 @@ func setKubeSwiftLabels(u *unstructured.Unstructured, req Request) {
 	if req.Cluster != nil {
 		labels[clusterv1.ClusterNameLabel] = req.Cluster.Name
 	}
-	labels["infrastructure.cluster.x-k8s.io/kubeswiftmachine"] = req.Machine.Name
+	labels[MachineLabelKey] = req.Machine.Name
 	u.SetLabels(labels)
 }
