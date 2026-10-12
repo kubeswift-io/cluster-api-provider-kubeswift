@@ -6,35 +6,16 @@ name: E2E Tests
 # is not installed — a runner cannot host its VMs — so the suite writes SwiftGuest
 # status itself; booting a real node still needs a KubeSwift management cluster.
 #
-# Runs on PRs and pushes to main that touch what the suite builds or exercises —
-# including go.mod, so dependency bumps (Dependabot's among them) are run end to end.
-# It was manual-only before, and broke unnoticed for three months.
+# Runs on every PR and push to main, and always reports, because `e2e` is a required
+# check: a workflow skipped by a trigger-level `paths` filter never reports, and
+# leaves a docs-only PR blocked waiting for it. The first step decides instead —
+# the suite runs when the change touches what it builds or exercises (go.mod
+# included, so dependency bumps run end to end), and otherwise the job passes
+# without running it. It was manual-only once, and broke unnoticed for three months.
 on:
   pull_request:
-    paths:
-      - 'api/**'
-      - 'cmd/**'
-      - 'config/**'
-      - 'internal/**'
-      - 'test/**'
-      - 'go.mod'
-      - 'go.sum'
-      - 'Makefile'
-      - 'Dockerfile'
-      - '.github/workflows/test-e2e.yml'
   push:
     branches: [main]
-    paths:
-      - 'api/**'
-      - 'cmd/**'
-      - 'config/**'
-      - 'internal/**'
-      - 'test/**'
-      - 'go.mod'
-      - 'go.sum'
-      - 'Makefile'
-      - 'Dockerfile'
-      - '.github/workflows/test-e2e.yml'
   workflow_dispatch:
 
 permissions:
@@ -52,20 +33,48 @@ jobs:
     steps:
       - name: Clone the code
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the change detection below diffs against the base commit
+
+      - name: Decide whether the change needs the e2e suite
+        id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          # What the suite builds or exercises. Anything else (docs, templates,
+          # other workflows) cannot change its result.
+          PATHS: '^(api|cmd|config|internal|test)/|^(go\.mod|go\.sum|Makefile|Dockerfile|\.github/workflows/test-e2e\.yml)$'
+        run: |
+          run=true
+          # Manual runs always run. So does anything without a usable base (a
+          # new branch, or a force-push whose old head is gone): run rather than guess.
+          if [ "$EVENT" != workflow_dispatch ] && git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            if git diff --name-only "$BASE" HEAD | grep -qE "$PATHS"; then
+              echo "Relevant files changed since $BASE; running the e2e suite."
+            else
+              echo "No file the e2e suite depends on changed since $BASE; skipping it."
+              run=false
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
 
       - name: Setup Go
+        if: steps.changes.outputs.run == 'true'
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
       - name: Install the latest version of kind
+        if: steps.changes.outputs.run == 'true'
         run: |
           curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64
           chmod +x ./kind
           sudo mv ./kind /usr/local/bin/kind
 
       - name: Verify kind installation
+        if: steps.changes.outputs.run == 'true'
         run: kind version
 
       - name: Running Test e2e
+        if: steps.changes.outputs.run == 'true'
         run: make test-e2e
