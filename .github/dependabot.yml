@@ -90,3 +90,11 @@ updates:
     directory: /
     schedule: {interval: weekly}
     open-pull-requests-limit: 5
+    ignore:
+      # The builder's Go must match go.mod's `toolchain`, which CI tests with
+      # (setup-go reads go.mod) — an image on another Go ships a binary built by a
+      # compiler CI never ran. A new Go minor is therefore a deliberate move of
+      # both, not an image bump: #64 proposed golang 1.27.0 under toolchain
+      # go1.26.9. Patch PRs (1.26.x) still come; bump `toolchain` in the same PR.
+      - dependency-name: "golang"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
