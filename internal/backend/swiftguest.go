@@ -289,10 +289,12 @@ func renderSwiftGuest(req Request, cfg *infrav1.SwiftGuestBackend) *unstructured
 	}
 	switch {
 	case cfg.NetworkRef != "":
-		// The named network is the guest's PRIMARY interface.
+		// The named network is the guest's PRIMARY interface. KubeSwift hands the NAD's
+		// IP and gateway to the guest only when primary is set explicitly.
 		spec["interfaces"] = []interface{}{
 			map[string]interface{}{
-				nameField:    "primary",
+				nameField:    primaryInterfaceName,
+				primaryField: true,
 				"networkRef": localRef(cfg.NetworkRef),
 			},
 		}
@@ -302,7 +304,7 @@ func renderSwiftGuest(req Request, cfg *infrav1.SwiftGuestBackend) *unstructured
 		// (apiserver<->kubelet + pod overlay). The bootstrap sets kubelet --node-ip to
 		// the secondary interface's address.
 		spec["interfaces"] = []interface{}{
-			map[string]interface{}{nameField: "mgmt", "primary": true},
+			map[string]interface{}{nameField: "mgmt", primaryField: true},
 			map[string]interface{}{nameField: "node", "networkRef": localRef(cfg.NodeNetworkRef)},
 		}
 	}
@@ -383,6 +385,12 @@ func renderSwiftGuest(req Request, cfg *infrav1.SwiftGuestBackend) *unstructured
 
 // nameField is the "name" key used throughout the unstructured SwiftGuest spec.
 const nameField = "name"
+
+// primaryField marks a SwiftGuest interface as the guest's primary NIC.
+const primaryField = "primary"
+
+// primaryInterfaceName is the interface name given to a networkRef-backed primary NIC.
+const primaryInterfaceName = "primary"
 
 // natBinding is the SwiftGuest network binding for a node-local (pod-network) NIC —
 // the primary interface under Service-backed endpoint provisioning.

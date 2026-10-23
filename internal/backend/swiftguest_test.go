@@ -79,6 +79,26 @@ func TestRenderSwiftGuest_NoExposure(t *testing.T) {
 	}
 }
 
+// TestRenderSwiftGuest_NetworkRefIsPrimary verifies a networkRef renders as the single,
+// explicitly primary interface, so KubeSwift serves the NAD's IP and gateway to the guest.
+func TestRenderSwiftGuest_NetworkRefIsPrimary(t *testing.T) {
+	req, cfg := testRenderRequest(nil, "nad")
+	g := renderSwiftGuest(req, cfg)
+
+	ifaces, _, _ := unstructured.NestedSlice(g.Object, "spec", "interfaces")
+	if len(ifaces) != 1 {
+		t.Fatalf("want 1 interface, got %d", len(ifaces))
+	}
+	iface, _ := ifaces[0].(map[string]interface{})
+	if iface["primary"] != true {
+		t.Fatalf("interface primary = %v, want true", iface["primary"])
+	}
+	ref, _ := iface["networkRef"].(map[string]interface{})
+	if ref["name"] != "nad" {
+		t.Fatalf("interface networkRef = %v, want nad", ref["name"])
+	}
+}
+
 // TestRenderSwiftGuest_NodeNetworkRef verifies the multi-node shape: a nat primary
 // (management + the reachable endpoint) plus a secondary routable node-datapath
 // interface, composing with the Service-backed nat endpoint (no rejection).
