@@ -4,7 +4,10 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v0.4.1] — 2026-11-01
+
+Built against **Cluster API v1.14.3** (v1beta2 contract). Requires KubeSwift v0.13.12
+or later (v0.15.0+ recommended), as v0.4.0.
 
 ### Fixed
 - **A `networkRef` machine's interface is now the guest's primary NIC** (#71, #72).
@@ -23,7 +26,25 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   now installs v0.22.0's CRDs.
 
 ### Dependencies
-- Go toolchain and builder image **1.26.10** (#77).
+- Go toolchain and builder image **1.26.10** (from 1.26.9; security fixes to
+  `crypto/x509`) (#77).
+- Kubernetes libraries **v0.36.6** (from v0.36.3) (#65, #78), and patch/minor
+  refreshes of the indirect dependencies (#66, #76, #79). prometheus/common v0.73
+  brings two new indirect modules, `hashicorp/go-uuid` (MPL-2.0) and
+  `pandatix/go-abnf` (MIT). Cluster API and controller-runtime are unchanged.
+
+### Upgrade
+- **From v0.4.0:** upgrade in place (same `capks-system` namespace, same v1beta2
+  contract, no CRD schema or RBAC change):
+
+  ```bash
+  clusterctl upgrade apply --infrastructure capks-system/kubeswift-io:v0.4.1
+  ```
+
+  Running `networkRef` machines keep their SwiftGuest as rendered; roll them to get
+  the primary NIC, e.g. by setting `spec.rollout.after` on the MachineDeployment or
+  KubeadmControlPlane.
+- **From v0.3.x or earlier:** see the v0.4.0 notes below.
 
 ## [v0.4.0] — 2026-10-11
 

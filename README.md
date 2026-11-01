@@ -83,7 +83,7 @@ Or upgrade only this provider. `upgrade apply` takes `namespace/provider:version
 the bare name `init` takes:
 
 ```sh
-clusterctl upgrade apply --infrastructure capks-system/kubeswift-io:v0.4.0
+clusterctl upgrade apply --infrastructure capks-system/kubeswift-io:v0.4.1
 ```
 
 Read the release's [CHANGELOG](CHANGELOG.md) entry first: it lists the minimum KubeSwift
