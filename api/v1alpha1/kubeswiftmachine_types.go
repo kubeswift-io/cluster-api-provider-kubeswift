@@ -78,6 +78,22 @@ type SwiftGuestBackend struct {
 	// +optional
 	NodeNetworkRef string `json:"nodeNetworkRef,omitempty"`
 
+	// interfaces optionally gives the VM an explicit list of NICs, passed through
+	// to the SwiftGuest's spec.interfaces, for machines that need more than the two
+	// shapes networkRef and nodeNetworkRef cover (e.g. management, storage and a
+	// provider trunk). Exactly one interface must be primary: it carries the guest's
+	// default route, either on its networkRef or, without one, on the node-local
+	// network. Every other interface must set a networkRef. KubeSwift hands a NAD's
+	// IP to at most one secondary interface; further secondaries should ride NADs
+	// without IPAM and be configured by the guest.
+	//
+	// Mutually exclusive with networkRef and nodeNetworkRef.
+	// +optional
+	// +listType=map
+	// +listMapKey=name
+	// +kubebuilder:validation:MaxItems=16
+	Interfaces []SwiftGuestInterface `json:"interfaces,omitempty"`
+
 	// nodeName pins this machine's VM to a named Kubernetes node in the
 	// infrastructure cluster, for the cases where placement is not the scheduler's
 	// to choose: a host with the hardware, a licence bound to a machine, storage
@@ -121,6 +137,25 @@ type SwiftGuestBackend struct {
 	// controller-created root-disk PVC only.
 	// +optional
 	StorageClassName string `json:"storageClassName,omitempty"`
+}
+
+// SwiftGuestInterface is one NIC of a SwiftGuest-backed machine.
+type SwiftGuestInterface struct {
+	// name is the interface name, unique within the machine.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	Name string `json:"name"`
+
+	// networkRef names the NetworkAttachmentDefinition, in the guest namespace,
+	// the interface rides. Empty puts it on the node-local network, which only the
+	// primary interface may do.
+	// +optional
+	NetworkRef string `json:"networkRef,omitempty"`
+
+	// primary marks the interface that carries the guest's address and default
+	// route. Exactly one interface must set it.
+	// +optional
+	Primary bool `json:"primary,omitempty"`
 }
 
 // GPUTierPCIe is the only supported GPU tier: Cloud Hypervisor with a flat PCI
