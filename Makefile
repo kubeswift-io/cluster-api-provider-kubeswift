@@ -72,7 +72,7 @@ test: manifests generate fmt vet setup-envtest ## Run tests.
 # suite plays KubeSwift's part by writing SwiftGuest status itself.
 KIND_CLUSTER ?= capks-test-e2e
 E2E_KUBECONFIG ?= $(LOCALBIN)/$(KIND_CLUSTER).kubeconfig
-KUBESWIFT_VERSION ?= v0.16.2
+KUBESWIFT_VERSION ?= v0.22.0
 
 .PHONY: setup-test-e2e
 setup-test-e2e: $(LOCALBIN) ## Create the e2e Kind cluster (if absent) and write its kubeconfig to E2E_KUBECONFIG.

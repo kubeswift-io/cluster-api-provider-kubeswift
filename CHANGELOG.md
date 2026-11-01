@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **A `networkRef` machine's interface is now the guest's primary NIC** (#71, #72).
+  The backend rendered it without `primary: true`, and KubeSwift makes the first
+  interface *without* a `networkRef` the primary when none is marked, so the guest
+  got no primary NIC: no NAD address and no default route. Affects machines using
+  `spec.backend.swiftGuest.networkRef` since that field was added; `nodeNetworkRef`
+  (multi-node) already marked its primary. Existing machines keep the old
+  SwiftGuest (the provider does not rewrite a guest's spec); roll them to pick up
+  the fix.
+
+### Compatibility
+- Checked against **KubeSwift v0.22.0**: the SwiftGuest and SwiftSeedProfile APIs and
+  the SwiftGuest webhook are unchanged from v0.16.2, and so is what the provider
+  reads (`primaryIPScope`/`podIP`, `Resolved`, pool-label propagation). The e2e suite
+  now installs v0.22.0's CRDs.
+
+### Dependencies
+- Go toolchain and builder image **1.26.10** (#77).
+
 ## [v0.4.0] — 2026-10-11
 
 Built against **Cluster API v1.14.3** (v1beta2 contract). Requires KubeSwift v0.13.12
