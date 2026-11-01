@@ -38,9 +38,10 @@ keeps this codebase license-clean against KubeSwift's AGPL-3.0 core. See
 | v0.3.x | v1beta2 | v1.13 | v0.13.12 or later; v0.15.0+ recommended |
 | v0.2.x | v1beta2 | v1.13 | v0.13.x–v0.16.x |
 
-The KubeSwift column for v0.3.x and v0.4.x is checked against the KubeSwift v0.16.2 API (CRDs,
-admission and changelog), and the e2e suite runs against its CRDs; not yet against a
-live KubeSwift controller.
+The KubeSwift column for v0.3.x and v0.4.x is checked against the KubeSwift API up to
+v0.22.0 (CRDs, admission and changelog; the SwiftGuest and SwiftSeedProfile APIs are
+unchanged from v0.16.2 to v0.22.0), and the e2e suite runs against v0.22.0's CRDs; not
+yet against a live KubeSwift controller.
 
 ## Install (clusterctl)
 

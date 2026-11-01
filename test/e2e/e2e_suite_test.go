@@ -23,7 +23,7 @@ var (
 	// built against.
 	capiVersion = os.Getenv("CAPI_VERSION")
 	// kubeSwiftVersion is the KubeSwift release whose CRDs are installed.
-	kubeSwiftVersion = envOr("KUBESWIFT_VERSION", "v0.16.2")
+	kubeSwiftVersion = envOr("KUBESWIFT_VERSION", "v0.22.0")
 
 	// projectImage is the name of the image which will be build and loaded
 	// with the code source changes to be tested.
