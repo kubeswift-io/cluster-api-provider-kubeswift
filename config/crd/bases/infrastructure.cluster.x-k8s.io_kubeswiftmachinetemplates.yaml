@@ -162,6 +162,47 @@ spec:
                                   imageRef names the SwiftImage the VM boots from (disk boot). It references a
                                   SwiftImage by name in the guest namespace, which must be Ready before boot.
                                 type: string
+                              interfaces:
+                                description: |-
+                                  interfaces optionally gives the VM an explicit list of NICs, passed through
+                                  to the SwiftGuest's spec.interfaces, for machines that need more than the two
+                                  shapes networkRef and nodeNetworkRef cover (e.g. management, storage and a
+                                  provider trunk). Exactly one interface must be primary: it carries the guest's
+                                  default route, either on its networkRef or, without one, on the node-local
+                                  network. Every other interface must set a networkRef. KubeSwift hands a NAD's
+                                  IP to at most one secondary interface; further secondaries should ride NADs
+                                  without IPAM and be configured by the guest.
+
+                                  Mutually exclusive with networkRef and nodeNetworkRef.
+                                items:
+                                  description: SwiftGuestInterface is one NIC of a
+                                    SwiftGuest-backed machine.
+                                  properties:
+                                    name:
+                                      description: name is the interface name, unique
+                                        within the machine.
+                                      maxLength: 63
+                                      minLength: 1
+                                      type: string
+                                    networkRef:
+                                      description: |-
+                                        networkRef names the NetworkAttachmentDefinition, in the guest namespace,
+                                        the interface rides. Empty puts it on the node-local network, which only the
+                                        primary interface may do.
+                                      type: string
+                                    primary:
+                                      description: |-
+                                        primary marks the interface that carries the guest's address and default
+                                        route. Exactly one interface must set it.
+                                      type: boolean
+                                  required:
+                                  - name
+                                  type: object
+                                maxItems: 16
+                                type: array
+                                x-kubernetes-list-map-keys:
+                                - name
+                                x-kubernetes-list-type: map
                               networkRef:
                                 description: |-
                                   networkRef optionally attaches the VM's primary interface to a named network
