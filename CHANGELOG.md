@@ -4,7 +4,11 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v0.5.0] — 2026-11-04
+
+Built against **Cluster API v1.14.3** (v1beta2 contract). Requires KubeSwift v0.13.12
+or later (v0.15.0+ recommended), as v0.4.x. Adds a field to the KubeSwiftMachine and
+KubeSwiftMachineTemplate CRDs, hence a minor release.
 
 ### Added
 - **`spec.backend.swiftGuest.interfaces` for multi-NIC machines** (#73, #74),
@@ -16,6 +20,30 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   KubeSwiftMachine and KubeSwiftMachineTemplate CRDs reject a bad `interfaces` list
   when it is applied, instead of the machine failing later as `VMFailed`. Duplicate
   interface names are rejected too. The reconcile-time check stays as a backstop.
+
+### Dependencies
+- go-abnf **v0.5.4** (#82), which drops the indirect `hashicorp/go-uuid` (MPL-2.0)
+  that v0.4.1 picked up.
+
+### Upgrade
+- **From v0.4.x:** upgrade in place (same `capks-system` namespace, same v1beta2
+  contract):
+
+  ```bash
+  clusterctl upgrade plan
+  clusterctl upgrade apply --contract v1beta2
+  ```
+
+  or only this provider:
+
+  ```bash
+  clusterctl upgrade apply --infrastructure capks-system/kubeswift-io:v0.5.0
+  ```
+
+  The CRD change is additive: existing machines and templates, which don't set
+  `interfaces`, are unaffected by the new validation rules, and running guests are
+  not touched.
+- **From v0.3.x or earlier:** see the v0.4.0 notes below.
 
 ## [v0.4.1] — 2026-11-01
 
