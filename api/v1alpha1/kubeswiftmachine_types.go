@@ -49,6 +49,7 @@ type MachineBackend struct {
 }
 
 // SwiftGuestBackend configures a machine backed by a SwiftGuest VM.
+// +kubebuilder:validation:XValidation:rule="!has(self.interfaces) || size(self.interfaces) == 0 || ((!has(self.networkRef) || size(self.networkRef) == 0) && (!has(self.nodeNetworkRef) || size(self.nodeNetworkRef) == 0))",message="interfaces cannot be combined with networkRef or nodeNetworkRef"
 type SwiftGuestBackend struct {
 	// imageRef names the SwiftImage the VM boots from (disk boot). It references a
 	// SwiftImage by name in the guest namespace, which must be Ready before boot.
@@ -92,6 +93,7 @@ type SwiftGuestBackend struct {
 	// +listType=map
 	// +listMapKey=name
 	// +kubebuilder:validation:MaxItems=16
+	// +kubebuilder:validation:XValidation:rule="size(self) == 0 || self.exists_one(i, has(i.primary) && i.primary)",message="exactly one interface must set primary"
 	Interfaces []SwiftGuestInterface `json:"interfaces,omitempty"`
 
 	// nodeName pins this machine's VM to a named Kubernetes node in the
@@ -140,6 +142,7 @@ type SwiftGuestBackend struct {
 }
 
 // SwiftGuestInterface is one NIC of a SwiftGuest-backed machine.
+// +kubebuilder:validation:XValidation:rule="(has(self.primary) && self.primary) || (has(self.networkRef) && size(self.networkRef) > 0)",message="a secondary interface must set networkRef"
 type SwiftGuestInterface struct {
 	// name is the interface name, unique within the machine.
 	// +kubebuilder:validation:MinLength=1

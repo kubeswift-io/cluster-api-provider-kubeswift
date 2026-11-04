@@ -12,6 +12,10 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   secondary needs a `networkRef`, up to 16, and exclusive with `networkRef` and
   `nodeNetworkRef`. KubeSwift gives a NAD IP to at most one secondary; the rest
   should use NADs without IPAM.
+- **Those rules are enforced at admission** (#83): CEL validation rules on the
+  KubeSwiftMachine and KubeSwiftMachineTemplate CRDs reject a bad `interfaces` list
+  when it is applied, instead of the machine failing later as `VMFailed`. Duplicate
+  interface names are rejected too. The reconcile-time check stays as a backstop.
 
 ## [v0.4.1] — 2026-11-01
 

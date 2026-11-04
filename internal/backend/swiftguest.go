@@ -94,6 +94,8 @@ func validateGPU(gpu *infrav1.SwiftGuestGPU) error {
 // validateInterfaces enforces the explicit interface list's shape. KubeSwift only
 // serves a NAD's IP and gateway on the primary interface, and a secondary without a
 // networkRef has nothing to bridge, so both mistakes yield a guest without a network.
+// The CRD's CEL rules reject the same shapes at admission; this is the backstop for
+// objects stored before those rules existed.
 func validateInterfaces(cfg *infrav1.SwiftGuestBackend) error {
 	if len(cfg.Interfaces) == 0 {
 		return nil

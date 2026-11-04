@@ -178,11 +178,19 @@ spec:
                           required:
                           - name
                           type: object
+                          x-kubernetes-validations:
+                          - message: a secondary interface must set networkRef
+                            rule: (has(self.primary) && self.primary) || (has(self.networkRef)
+                              && size(self.networkRef) > 0)
                         maxItems: 16
                         type: array
                         x-kubernetes-list-map-keys:
                         - name
                         x-kubernetes-list-type: map
+                        x-kubernetes-validations:
+                        - message: exactly one interface must set primary
+                          rule: size(self) == 0 || self.exists_one(i, has(i.primary)
+                            && i.primary)
                       networkRef:
                         description: |-
                           networkRef optionally attaches the VM's primary interface to a named network
@@ -231,6 +239,12 @@ spec:
                           controller-created root-disk PVC only.
                         type: string
                     type: object
+                    x-kubernetes-validations:
+                    - message: interfaces cannot be combined with networkRef or nodeNetworkRef
+                      rule: '!has(self.interfaces) || size(self.interfaces) == 0 ||
+                        ((!has(self.networkRef) || size(self.networkRef) == 0) &&
+                        (!has(self.nodeNetworkRef) || size(self.nodeNetworkRef) ==
+                        0))'
                   type:
                     default: SwiftGuest
                     description: type is the backend kind. Only "SwiftGuest" is currently
