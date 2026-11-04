@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`spec.backend.swiftGuest.interfaces` for multi-NIC machines** (#73, #74),
+  passed through to the SwiftGuest's `spec.interfaces`. Exactly one primary, every
+  secondary needs a `networkRef`, up to 16, and exclusive with `networkRef` and
+  `nodeNetworkRef`. KubeSwift gives a NAD IP to at most one secondary; the rest
+  should use NADs without IPAM.
+
 ## [v0.4.1] — 2026-11-01
 
 Built against **Cluster API v1.14.3** (v1beta2 contract). Requires KubeSwift v0.13.12
